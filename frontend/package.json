@@ -1,0 +1,26 @@
+{
+  "name": "tempo-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "solid-js": "^1.9.9"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@types/node": "^22.15.30",
+    "jsdom": "^26.1.0",
+    "playwright-core": "^1.62.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-solid": "^2.11.7",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@11.5.2"
+}

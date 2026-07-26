@@ -1,0 +1,6 @@
+import type { Task, TimeEntry } from "./types";
+export const minutesLabel=(minutes:number)=>minutes<60?`${minutes}m`:`${Math.floor(minutes/60)}h ${minutes%60?`${minutes%60}m`:""}`.trim();
+export const secondsLabel=(seconds:number)=>{const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),s=Math.max(0,Math.floor(seconds%60));return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`};
+export function taskSeconds(taskId:string,entries:TimeEntry[],now=Date.now()){return entries.filter(e=>e.taskId===taskId).reduce((sum,e)=>sum+(e.stoppedAt?e.durationSeconds:Math.max(0,Math.floor((now-new Date(e.startedAt).getTime())/1000))),0)}
+export const dueTone=(task:Task,now=new Date())=>{if(task.status==="done"||!task.dueDate)return "neutral";const days=(new Date(`${task.dueDate}T23:59:59`).getTime()-now.getTime())/86400000;return days<0?"overdue":days<3?"soon":"neutral"};
+export function monthGrid(anchor:Date){const first=new Date(anchor.getFullYear(),anchor.getMonth(),1),start=new Date(first);start.setDate(first.getDate()-first.getDay());return Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);return d})}

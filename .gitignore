@@ -1,0 +1,9 @@
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+bin/
+data/
+qa/*.png
+*.log
+.DS_Store
