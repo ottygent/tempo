@@ -40,6 +40,45 @@ func TestStorePersistsTaskAndTimer(t *testing.T) {
 	}
 }
 
+func TestDocumentLifecycleAndProjectCascade(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tempo.json")
+	store, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectID := store.Snapshot().Projects[0].ID
+	document, err := store.AddDocument(Document{ProjectID: projectID, Title: "  Launch brief  ", Content: "# Draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Title != "Launch brief" || document.ID == "" || document.CreatedAt.IsZero() || document.UpdatedAt.IsZero() {
+		t.Fatalf("invalid document: %+v", document)
+	}
+	updated, err := store.UpdateDocument(document.ID, map[string]any{"title": "Launch plan", "content": "# Launch\n\nReady."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Title != "Launch plan" || updated.Content != "# Launch\n\nReady." || !updated.UpdatedAt.After(document.UpdatedAt) {
+		t.Fatalf("document not updated: %+v", updated)
+	}
+	if _, err := store.UpdateDocument(document.ID, map[string]any{"title": " "}); err == nil {
+		t.Fatal("blank title accepted")
+	}
+	reloaded, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Snapshot().Documents) != 1 || reloaded.Snapshot().Documents[0].Content != updated.Content {
+		t.Fatal("document did not persist")
+	}
+	if err := reloaded.DeleteProject(projectID); err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Snapshot().Documents) != 0 {
+		t.Fatal("project deletion did not cascade to documents")
+	}
+}
+
 func TestProjectArchiveAndDeleteCascade(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tempo.json")
 	store, err := NewStore(path)
@@ -127,6 +166,23 @@ func TestAuthenticatedAPIWorkflow(t *testing.T) {
 	state := request(server, http.MethodGet, "/api/state", "", cookie, "")
 	if state.Code != http.StatusOK || !strings.Contains(state.Body.String(), "API task") || strings.Contains(state.Body.String(), "Denied task") {
 		t.Fatalf("unexpected state: %s", state.Body.String())
+	}
+
+	createdDocument := request(server, http.MethodPost, "/api/documents", `{"projectId":"prj_launch","title":"API brief","content":"# Draft"}`, cookie, session.CSRFToken)
+	if createdDocument.Code != http.StatusCreated {
+		t.Fatalf("create document status=%d body=%s", createdDocument.Code, createdDocument.Body.String())
+	}
+	var document Document
+	if err := json.Unmarshal(createdDocument.Body.Bytes(), &document); err != nil || document.ID == "" {
+		t.Fatalf("invalid created document: %v %s", err, createdDocument.Body.String())
+	}
+	updatedDocument := request(server, http.MethodPatch, "/api/documents/"+document.ID, `{"title":"API launch brief","content":"# Ready"}`, cookie, session.CSRFToken)
+	if updatedDocument.Code != http.StatusOK || !strings.Contains(updatedDocument.Body.String(), "# Ready") {
+		t.Fatalf("update document status=%d body=%s", updatedDocument.Code, updatedDocument.Body.String())
+	}
+	deletedDocument := request(server, http.MethodDelete, "/api/documents/"+document.ID, "", cookie, session.CSRFToken)
+	if deletedDocument.Code != http.StatusOK {
+		t.Fatalf("delete document status=%d body=%s", deletedDocument.Code, deletedDocument.Body.String())
 	}
 
 	archived := request(server, http.MethodPatch, "/api/projects/prj_mobile", `{"status":"archived"}`, cookie, session.CSRFToken)

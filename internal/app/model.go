@@ -46,10 +46,20 @@ type TimeEntry struct {
 	Note            string     `json:"note"`
 }
 
+type Document struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"projectId"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type State struct {
 	Version     int         `json:"version"`
 	Workspaces  []Workspace `json:"workspaces"`
 	Projects    []Project   `json:"projects"`
 	Tasks       []Task      `json:"tasks"`
 	TimeEntries []TimeEntry `json:"timeEntries"`
+	Documents   []Document  `json:"documents"`
 }

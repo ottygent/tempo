@@ -40,6 +40,9 @@ func newStore(backend stateBackend, initial *State) (*Store, error) {
 	} else {
 		s.data = state
 	}
+	if s.data.Documents == nil {
+		s.data.Documents = []Document{}
+	}
 	return s, nil
 }
 
@@ -67,6 +70,24 @@ func newID(prefix string) string {
 }
 
 func clean(value string) string { return strings.TrimSpace(value) }
+
+const (
+	maxDocumentTitleLength  = 200
+	maxDocumentContentBytes = 512 << 10
+)
+
+func validateDocument(title, content string) error {
+	if clean(title) == "" {
+		return errors.New("document title is required")
+	}
+	if len([]rune(clean(title))) > maxDocumentTitleLength {
+		return errors.New("document title is too long")
+	}
+	if len(content) > maxDocumentContentBytes {
+		return errors.New("document content is too large")
+	}
+	return nil
+}
 
 func (s *Store) AddWorkspace(input Workspace) (Workspace, error) {
 	if clean(input.Name) == "" {
@@ -165,7 +186,88 @@ func (s *Store) DeleteProject(id string) error {
 	s.data.Projects = append(s.data.Projects[:projectIndex], s.data.Projects[projectIndex+1:]...)
 	s.data.Tasks = remainingTasks
 	s.data.TimeEntries = remainingEntries
+	remainingDocuments := s.data.Documents[:0]
+	for _, document := range s.data.Documents {
+		if document.ProjectID != id {
+			remainingDocuments = append(remainingDocuments, document)
+		}
+	}
+	s.data.Documents = remainingDocuments
 	return s.saveLocked()
+}
+
+func (s *Store) AddDocument(input Document) (Document, error) {
+	if err := validateDocument(input.Title, input.Content); err != nil {
+		return Document{}, err
+	}
+	if clean(input.ProjectID) == "" {
+		return Document{}, errors.New("projectId is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	for _, project := range s.data.Projects {
+		if project.ID == input.ProjectID && project.Status != "archived" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return Document{}, errors.New("active project not found")
+	}
+	now := time.Now().UTC()
+	input.ID = newID("doc")
+	input.Title = clean(input.Title)
+	input.CreatedAt = now
+	input.UpdatedAt = now
+	s.data.Documents = append(s.data.Documents, input)
+	return input, s.saveLocked()
+}
+
+func (s *Store) UpdateDocument(id string, patch map[string]any) (Document, error) {
+	for key := range patch {
+		if key != "title" && key != "content" {
+			return Document{}, errors.New("unsupported document field")
+		}
+	}
+	if len(patch) == 0 {
+		return Document{}, errors.New("document update is empty")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Documents {
+		if s.data.Documents[i].ID != id {
+			continue
+		}
+		document := &s.data.Documents[i]
+		title, content := document.Title, document.Content
+		if value, ok := patch["title"].(string); ok {
+			title = value
+		}
+		if value, ok := patch["content"].(string); ok {
+			content = value
+		}
+		if err := validateDocument(title, content); err != nil {
+			return Document{}, err
+		}
+		document.Title = clean(title)
+		document.Content = content
+		document.UpdatedAt = time.Now().UTC()
+		return *document, s.saveLocked()
+	}
+	return Document{}, errors.New("document not found")
+}
+
+func (s *Store) DeleteDocument(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Documents {
+		if s.data.Documents[i].ID == id {
+			s.data.Documents = append(s.data.Documents[:i], s.data.Documents[i+1:]...)
+			return s.saveLocked()
+		}
+	}
+	return errors.New("document not found")
 }
 
 func validStatus(status string) bool {
@@ -314,5 +416,5 @@ func seedState() State {
 	}
 	stopped := now.Add(-2 * time.Hour)
 	entries := []TimeEntry{{ID: "time_seed", TaskID: "tsk_copy", StartedAt: stopped.Add(-75 * time.Minute), StoppedAt: &stopped, DurationSeconds: 4500, Note: "Drafted narrative structure"}}
-	return State{Version: 1, Workspaces: []Workspace{ws}, Projects: []Project{p1, p2}, Tasks: tasks, TimeEntries: entries}
+	return State{Version: 1, Workspaces: []Workspace{ws}, Projects: []Project{p1, p2}, Tasks: tasks, TimeEntries: entries, Documents: []Document{}}
 }

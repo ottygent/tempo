@@ -1,4 +1,4 @@
-import type { AppState, Project, Task, TimeEntry, Workspace } from "./types";
+import type { AppState, Document, Project, Task, TimeEntry, Workspace } from "./types";
 
 export interface AuthSession { authenticated:boolean; username?:string; csrfToken?:string; expires?:number }
 export class ApiError extends Error { constructor(message:string,public readonly status:number){super(message)} }
@@ -21,6 +21,9 @@ export const api={
   createProject:(body:Partial<Project>)=>call<Project>("/api/projects",{method:"POST",body:JSON.stringify(body)}),
   updateProject:(id:string,body:Partial<Project>)=>call<Project>(`/api/projects/${id}`,{method:"PATCH",body:JSON.stringify(body)}),
   deleteProject:(id:string)=>call<{deleted:boolean}>(`/api/projects/${id}`,{method:"DELETE"}),
+  createDocument:(body:Pick<Document,"projectId"|"title"|"content">)=>call<Document>("/api/documents",{method:"POST",body:JSON.stringify(body)}),
+  updateDocument:(id:string,body:Pick<Document,"title"|"content">)=>call<Document>(`/api/documents/${id}`,{method:"PATCH",body:JSON.stringify(body)}),
+  deleteDocument:(id:string)=>call<{deleted:boolean}>(`/api/documents/${id}`,{method:"DELETE"}),
   createTask:(body:Partial<Task>)=>call<Task>("/api/tasks",{method:"POST",body:JSON.stringify(body)}),
   updateTask:(id:string,body:Partial<Task>)=>call<Task>(`/api/tasks/${id}`,{method:"PATCH",body:JSON.stringify(body)}),
   startTimer:(taskId:string)=>call<TimeEntry>("/api/time/start",{method:"POST",body:JSON.stringify({taskId})}),
