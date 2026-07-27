@@ -35,7 +35,7 @@ await page.getByLabel('Workspace name').fill('Client Operations');
 await page.getByRole('button',{name:'Create workspace'}).click();
 await page.getByLabel('Select workspace').selectOption({label:'Client Operations'});
 if(await page.locator('.project-list').getByText('Product launch',{exact:true}).count())throw new Error('workspace project isolation failed');
-await page.getByLabel('Select workspace').selectOption({label:'Northstar Studio'});
+await page.getByLabel('Select workspace').selectOption({label:'Default workspace'});
 await page.getByText('Product launch',{exact:true}).first().waitFor();
 const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});mobile.on('pageerror',e=>errors.push(`mobile: ${e.message}`));
 await mobile.goto(baseURL,{waitUntil:'networkidle'});await mobile.getByRole('heading',{name:'Sign in to your workspace'}).waitFor();

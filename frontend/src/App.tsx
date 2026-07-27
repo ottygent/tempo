@@ -7,6 +7,7 @@ type View="overview"|"board"|"timeline"|"calendar"|"time";
 const empty:AppState={version:1,workspaces:[],projects:[],tasks:[],timeEntries:[]};
 const columns:{id:TaskStatus;label:string}[]=[{id:"backlog",label:"Backlog"},{id:"todo",label:"Ready"},{id:"progress",label:"In progress"},{id:"review",label:"Review"},{id:"done",label:"Done"}];
 const icons:Record<View,string>={overview:"⌂",board:"▦",timeline:"↔",calendar:"□",time:"◷"};
+const addWorkspaceOption="__add_workspace__";
 
 export default function App(){
   const [state,setState]=createSignal<AppState>(empty),[selectedWorkspace,setSelectedWorkspace]=createSignal(""),[selectedProject,setSelectedProject]=createSignal(""),[view,setView]=createSignal<View>("overview");
@@ -22,6 +23,7 @@ export default function App(){
   const projects=createMemo(()=>state().projects.filter(p=>p.workspaceId===workspace()?.id));
   const project=createMemo(()=>projects().find(p=>p.id===selectedProject())??projects()[0]);
   const chooseWorkspace=(id:string)=>{setSelectedWorkspace(id);setSelectedProject(state().projects.find(p=>p.workspaceId===id)?.id??"")};
+  const handleWorkspaceSelect=(select:HTMLSelectElement)=>{if(select.value===addWorkspaceOption){setWorkspaceOpen(true);select.value=workspace()?.id??"";return}chooseWorkspace(select.value)};
   const tasks=createMemo(()=>state().tasks.filter(t=>t.projectId===project()?.id));
   const running=createMemo(()=>state().timeEntries.find(e=>!e.stoppedAt));
   const tracked=createMemo(()=>tasks().reduce((sum,t)=>sum+taskSeconds(t.id,state().timeEntries,now()),0));
@@ -32,12 +34,11 @@ export default function App(){
     <Show when={mobileNav()}><button class="scrim" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/></Show>
     <aside classList={{sidebar:true,open:mobileNav()}}>
       <button class="close-nav" aria-label="Close navigation" onClick={()=>setMobileNav(false)}>×</button>
-      <div class="workspace-label workspace-head"><span>Workspace</span><button aria-label="Add workspace" onClick={()=>setWorkspaceOpen(true)}>＋</button></div>
-      <div class="workspace-switch"><span class="workspace-avatar" style={{background:workspace()?.color??"#7c5cff"}}>{workspace()?.name?.[0]??"N"}</span><select aria-label="Select workspace" value={workspace()?.id} onChange={e=>chooseWorkspace(e.currentTarget.value)}><For each={state().workspaces}>{w=><option value={w.id}>{w.name}</option>}</For></select><b>⌄</b></div>
+      <div class="workspace-switch"><span class="workspace-avatar" style={{background:workspace()?.color??"#7c5cff"}}>{workspace()?.name?.[0]??"D"}</span><select aria-label="Select workspace" value={workspace()?.id} onChange={e=>handleWorkspaceSelect(e.currentTarget)}><For each={state().workspaces}>{w=><option value={w.id}>{w.name}</option>}</For><option value={addWorkspaceOption}>+ Add new workspace</option></select><b>⌄</b></div>
       <nav class="nav-list">
         <For each={Object.keys(icons) as View[]}>{item=><button classList={{active:view()===item}} onClick={()=>{setView(item);setMobileNav(false)}}><span>{icons[item]}</span>{item[0]?.toUpperCase()}{item.slice(1)}<Show when={item==="time"&&running()}><i class="live-dot"/></Show></button>}</For>
       </nav>
-      <div class="project-head"><span>Projects</span><button aria-label="Add project" onClick={()=>setProjectOpen(true)}>＋</button></div>
+      <div class="project-head"><span>Projects</span><button aria-label="Add project" onClick={()=>setProjectOpen(true)}>+</button></div>
       <div class="project-list"><For each={projects()}>{p=><button classList={{active:project()?.id===p.id}} onClick={()=>{setSelectedProject(p.id);setMobileNav(false)}}><i style={{background:p.color}}/>{p.name}<span>{state().tasks.filter(t=>t.projectId===p.id&&t.status!=="done").length}</span></button>}</For></div>
       <div class="sidebar-foot"><div class="avatar">{username().slice(0,2).toUpperCase()}</div><div><strong>{username()}</strong><span>Workspace owner</span></div><button aria-label="Log out" title="Log out" onClick={()=>void logout()}>↪</button></div>
     </aside>
@@ -55,7 +56,7 @@ export default function App(){
     </main>
     <Show when={taskOpen()}><TaskModal project={project()} close={()=>setTaskOpen(false)} save={async task=>{await mutate(()=>api.createTask(task));setTaskOpen(false)}}/></Show>
     <Show when={projectOpen()}><ProjectModal workspaceId={workspace()?.id??""} close={()=>setProjectOpen(false)} save={async p=>{await mutate(()=>api.createProject(p));setProjectOpen(false)}}/></Show>
-    <Show when={workspaceOpen()}><WorkspaceModal close={()=>setWorkspaceOpen(false)} save={async w=>{await mutate(()=>api.createWorkspace(w));setWorkspaceOpen(false)}}/></Show>
+    <Show when={workspaceOpen()}><WorkspaceModal close={()=>setWorkspaceOpen(false)} save={async w=>{let createdId="";await mutate(async()=>{const created=await api.createWorkspace(w);createdId=created.id});if(createdId){setSelectedWorkspace(createdId);setSelectedProject("");setWorkspaceOpen(false)}}}/></Show>
   </div></Show></Show></>
 }
 

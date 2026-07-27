@@ -254,7 +254,7 @@ func (s *Store) StopTimer() (TimeEntry, error) {
 func seedState() State {
 	now := time.Now().UTC()
 	day := 24 * time.Hour
-	ws := Workspace{ID: "ws_northstar", Name: "Northstar Studio", Color: "#7c5cff", CreatedAt: now.Add(-30 * day)}
+	ws := Workspace{ID: "ws_northstar", Name: "Default workspace", Color: "#7c5cff", CreatedAt: now.Add(-30 * day)}
 	p1 := Project{ID: "prj_launch", WorkspaceID: ws.ID, Name: "Product launch", Description: "Coordinate the summer release across product, content, and growth.", Color: "#ff7a59", Status: "active", StartDate: now.Add(-14 * day).Format("2006-01-02"), DueDate: now.Add(30 * day).Format("2006-01-02"), CreatedAt: now.Add(-14 * day)}
 	p2 := Project{ID: "prj_mobile", WorkspaceID: ws.ID, Name: "Mobile refresh", Description: "A faster, calmer mobile experience.", Color: "#00b894", Status: "active", StartDate: now.Add(-7 * day).Format("2006-01-02"), DueDate: now.Add(45 * day).Format("2006-01-02"), CreatedAt: now.Add(-7 * day)}
 	tasks := []Task{
