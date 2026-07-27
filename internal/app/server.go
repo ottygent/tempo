@@ -28,6 +28,8 @@ func NewServer(store *Store, static fs.FS, logger *slog.Logger, auth *Auth) http
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("POST /api/workspaces", s.createWorkspace)
 	mux.HandleFunc("POST /api/projects", s.createProject)
+	mux.HandleFunc("PATCH /api/projects/{id}", s.updateProject)
+	mux.HandleFunc("DELETE /api/projects/{id}", s.deleteProject)
 	mux.HandleFunc("POST /api/tasks", s.createTask)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTask)
 	mux.HandleFunc("POST /api/time/start", s.startTimer)
@@ -181,6 +183,26 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
+	var patch map[string]any
+	if err := readJSON(r, &patch); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	out, err := s.store.UpdateProject(r.PathValue("id"), patch)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteProject(r.PathValue("id")); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	var value Task

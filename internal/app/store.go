@@ -113,6 +113,61 @@ func (s *Store) AddProject(input Project) (Project, error) {
 	return input, s.saveLocked()
 }
 
+func (s *Store) UpdateProject(id string, patch map[string]any) (Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Projects {
+		if s.data.Projects[i].ID != id {
+			continue
+		}
+		project := &s.data.Projects[i]
+		status, ok := patch["status"].(string)
+		if !ok || status != "archived" {
+			return Project{}, errors.New("project status must be archived")
+		}
+		project.Status = status
+		return *project, s.saveLocked()
+	}
+	return Project{}, errors.New("project not found")
+}
+
+func (s *Store) DeleteProject(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	projectIndex := -1
+	for i := range s.data.Projects {
+		if s.data.Projects[i].ID == id {
+			projectIndex = i
+			break
+		}
+	}
+	if projectIndex == -1 {
+		return errors.New("project not found")
+	}
+
+	taskIDs := make(map[string]struct{})
+	remainingTasks := s.data.Tasks[:0]
+	for _, task := range s.data.Tasks {
+		if task.ProjectID == id {
+			taskIDs[task.ID] = struct{}{}
+			continue
+		}
+		remainingTasks = append(remainingTasks, task)
+	}
+	remainingEntries := s.data.TimeEntries[:0]
+	for _, entry := range s.data.TimeEntries {
+		if _, deleted := taskIDs[entry.TaskID]; deleted {
+			continue
+		}
+		remainingEntries = append(remainingEntries, entry)
+	}
+
+	s.data.Projects = append(s.data.Projects[:projectIndex], s.data.Projects[projectIndex+1:]...)
+	s.data.Tasks = remainingTasks
+	s.data.TimeEntries = remainingEntries
+	return s.saveLocked()
+}
+
 func validStatus(status string) bool {
 	return status == "backlog" || status == "todo" || status == "progress" || status == "review" || status == "done"
 }

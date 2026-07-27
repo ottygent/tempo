@@ -40,6 +40,52 @@ func TestStorePersistsTaskAndTimer(t *testing.T) {
 	}
 }
 
+func TestProjectArchiveAndDeleteCascade(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tempo.json")
+	store, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := store.Snapshot()
+	project := initial.Projects[0]
+	archived, err := store.UpdateProject(project.ID, map[string]any{"status": "archived"})
+	if err != nil || archived.Status != "archived" {
+		t.Fatalf("archive project: project=%+v err=%v", archived, err)
+	}
+	if err := store.DeleteProject(project.ID); err != nil {
+		t.Fatalf("delete project: %v", err)
+	}
+	state := store.Snapshot()
+	for _, candidate := range state.Projects {
+		if candidate.ID == project.ID {
+			t.Fatalf("deleted project remains: %+v", candidate)
+		}
+	}
+	deletedTaskIDs := make(map[string]struct{})
+	for _, task := range initial.Tasks {
+		if task.ProjectID == project.ID {
+			deletedTaskIDs[task.ID] = struct{}{}
+		}
+	}
+	for _, task := range state.Tasks {
+		if task.ProjectID == project.ID {
+			t.Fatalf("deleted project's task remains: %+v", task)
+		}
+	}
+	for _, entry := range state.TimeEntries {
+		if _, deleted := deletedTaskIDs[entry.TaskID]; deleted {
+			t.Fatalf("deleted project's time entry remains: %+v", entry)
+		}
+	}
+	reloaded, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Snapshot().Projects) != len(initial.Projects)-1 {
+		t.Fatal("project deletion did not persist")
+	}
+}
+
 func TestAuthenticatedAPIWorkflow(t *testing.T) {
 	server, authPath := newTestServer(t)
 
@@ -81,6 +127,19 @@ func TestAuthenticatedAPIWorkflow(t *testing.T) {
 	state := request(server, http.MethodGet, "/api/state", "", cookie, "")
 	if state.Code != http.StatusOK || !strings.Contains(state.Body.String(), "API task") || strings.Contains(state.Body.String(), "Denied task") {
 		t.Fatalf("unexpected state: %s", state.Body.String())
+	}
+
+	archived := request(server, http.MethodPatch, "/api/projects/prj_mobile", `{"status":"archived"}`, cookie, session.CSRFToken)
+	if archived.Code != http.StatusOK || !strings.Contains(archived.Body.String(), `"status":"archived"`) {
+		t.Fatalf("archive status=%d body=%s", archived.Code, archived.Body.String())
+	}
+	deleted := request(server, http.MethodDelete, "/api/projects/prj_mobile", "", cookie, session.CSRFToken)
+	if deleted.Code != http.StatusOK {
+		t.Fatalf("delete status=%d body=%s", deleted.Code, deleted.Body.String())
+	}
+	afterDelete := request(server, http.MethodGet, "/api/state", "", cookie, "")
+	if strings.Contains(afterDelete.Body.String(), "prj_mobile") || strings.Contains(afterDelete.Body.String(), "tsk_nav") {
+		t.Fatalf("project cascade failed: %s", afterDelete.Body.String())
 	}
 
 	logout := request(server, http.MethodPost, "/api/auth/logout", `{}`, cookie, session.CSRFToken)
