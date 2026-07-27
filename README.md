@@ -1,6 +1,6 @@
 # Tempo
 
-Tempo is a lightweight workspace and project-management application built with **SolidJS**, strict TypeScript, and Go. The complete frontend is embedded in one Go executable; runtime data is persisted in a human-readable JSON file using atomic replacement.
+Tempo is a lightweight workspace and project-management application built with **SolidJS**, strict TypeScript, and Go. The complete frontend is embedded in one Go executable. Runtime state can use atomic JSON persistence or an authenticated MongoDB backend with one-time JSON import.
 
 ## Features
 
@@ -10,13 +10,13 @@ Tempo is a lightweight workspace and project-management application built with *
 - Login throttling, same-origin enforcement, security headers, and logout
 - Project overview with progress, tracked time, open work, focus, and upcoming dates
 - Task creation with status, priority, assignee, dates, estimates, and tags
-- Native HTML drag-and-drop Kanban board
+- Desktop, touch, and keyboard-accessible drag-and-drop Kanban board
 - Persistent one-at-a-time task timer and per-task/project totals
 - Six-week project timeline
 - Responsive monthly calendar
 - Mobile navigation and layouts
 - Seeded first-run workspace so the application is useful immediately
-- No database server, frontend runtime server, external font CDN, or client framework beyond SolidJS
+- No frontend runtime server, external font CDN, or client framework beyond SolidJS
 
 ## Production quick start
 
@@ -51,6 +51,18 @@ TEMPO_AUTH_FILE=/var/lib/tempo/auth.json \
 TEMPO_SECURE_COOKIE=true \
 ./bin/tempo
 ```
+
+To use MongoDB, set a protected connection URI. `TEMPO_DATA` becomes the one-time import source when the Mongo collection is empty; subsequent starts load MongoDB and never overwrite it from JSON.
+
+```bash
+TEMPO_MONGO_URI='mongodb://<user>:***@127.0.0.1:27017/tempo?authSource=tempo' \
+TEMPO_MONGO_DATABASE=tempo \
+TEMPO_MONGO_COLLECTION=app_state \
+TEMPO_DATA=/var/lib/tempo/tempo.json \
+./bin/tempo
+```
+
+Keep the URI in a mode-`0600` systemd environment file; never commit it or pass it on a command line.
 
 ## Build from source
 
@@ -96,11 +108,13 @@ go test -race ./...
 go build -trimpath -ldflags='-s -w' -o bin/tempo .
 ```
 
-Browser QA is in `qa/run-qa.mjs`. It exercises rejected and accepted login, authenticated task creation, workspace isolation, timer start/stop, mobile login/calendar navigation, and logout before saving screenshots under `qa/`. Supply its temporary password through `TEMPO_QA_PASSWORD`.
+Browser QA is in `qa/run-qa.mjs`. It exercises rejected and accepted login, authenticated task creation, persisted HTML/pointer/keyboard Kanban movement, workspace isolation, timer start/stop, mobile login/calendar navigation, and logout before saving screenshots under `qa/`. Supply its temporary password through `TEMPO_QA_PASSWORD` or a mode-`0600` file through `TEMPO_QA_PASSWORD_FILE`.
 
 ## Persistence and backups
 
-Tempo serializes mutations under a read/write mutex and writes a temporary file before atomically renaming it over the configured state file. Back up the JSON file while Tempo is stopped or copy it from the same filesystem. To reset to demonstration data, stop Tempo and remove the chosen state file.
+Tempo serializes mutations under a read/write mutex. JSON mode writes and syncs a temporary file before atomically renaming it over the configured state file. MongoDB mode stores the complete, internally consistent state in one versioned `app_state` document and checks MongoDB in `/api/health`.
+
+When MongoDB is enabled and its state document is absent, Tempo imports `TEMPO_DATA` exactly once. If the document already exists, MongoDB always wins and the JSON source is not reapplied. Preserve the JSON file as a rollback backup after migration. Back up MongoDB with authenticated `mongodump`; restore into an empty collection before startup.
 
 Authentication data is stored separately in `<state-file>.auth.json` by default. It contains a salt, PBKDF2-HMAC-SHA256 password hash, iteration count, and random session-signing key—never the plaintext password. To reset the admin credential, stop Tempo, remove only the auth file, and restart once with a new `TEMPO_ADMIN_PASSWORD`. Existing sessions become invalid.
 
@@ -127,7 +141,9 @@ Everything except health, login, and session inspection requires a valid signed 
 ```text
 main.go                    embedded assets + production HTTP server
 internal/app/model.go      domain model
-internal/app/store.go      validated operations + atomic JSON persistence
+internal/app/store.go      validated, serialized domain operations
+internal/app/persistence.go atomic JSON backend
+internal/app/mongo_store.go authenticated MongoDB backend + one-time import
 internal/app/auth.go       credentials, cookies, signing, CSRF, throttling
 internal/app/server.go     protected REST API, security headers, SPA fallback
 frontend/src/App.tsx       SolidJS application and feature views

@@ -3,9 +3,10 @@
 The production host uses:
 
 - `/opt/tempo/tempo` — static application binary
-- `/var/lib/tempo/tempo.json` — atomic application state
+- MongoDB `tempo.app_state` — production application state
+- `/var/lib/tempo/tempo.json` — one-time migration source and rollback backup
 - `/var/lib/tempo/auth.json` — mode-0600 hashed credential and signing key
-- `/etc/tempo/tempo.env` — runtime flags (`TEMPO_SECURE_COOKIE`)
+- `/etc/tempo/tempo.env` — mode-0600 runtime flags and MongoDB URI
 - `tempo.service` — unprivileged, systemd-hardened process bound to `127.0.0.1:8085`
 - Apache — public reverse proxy for `tasks.shuvrojit.com`
 
@@ -34,7 +35,12 @@ Create `/etc/tempo/tempo.env` with mode `0600`:
 
 ```text
 TEMPO_SECURE_COOKIE=false
+TEMPO_MONGO_URI=mongodb://<user>:***@127.0.0.1:27017/tempo?authSource=tempo
+TEMPO_MONGO_DATABASE=tempo
+TEMPO_MONGO_COLLECTION=app_state
 ```
+
+MongoDB must bind to `127.0.0.1`, have authorization enabled, and grant the application user only `readWrite` on the `tempo` database. On the first Mongo-backed start, Tempo imports `/var/lib/tempo/tempo.json` only if `_id: "tempo"` is absent. The systemd unit requires and starts after `mongod.service`.
 
 After DNS resolves, run `deploy/complete-tls.sh` (or install it as a scheduled watcher). It verifies the A record points to the expected server, issues the Apache certificate, enables redirect mode, switches `TEMPO_SECURE_COOKIE=true`, restarts Tempo, and verifies the HTTPS health endpoint.
 

@@ -105,8 +105,13 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 
-func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.Check(r.Context()); err != nil {
+		s.logger.Error("storage health check failed", "backend", s.store.BackendName(), "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "storage": s.store.BackendName()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "storage": s.store.BackendName()})
 }
 func (s *Server) authSession(w http.ResponseWriter, r *http.Request) {
 	session, ok := s.auth.Session(r)

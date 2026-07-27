@@ -1,7 +1,8 @@
 [Unit]
 Description=Tempo task management service
-After=network-online.target
+After=network-online.target mongod.service
 Wants=network-online.target
+Requires=mongod.service
 
 [Service]
 Type=simple

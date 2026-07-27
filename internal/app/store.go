@@ -1,34 +1,44 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Store struct {
-	mu   sync.RWMutex
-	path string
-	data State
+	mu      sync.RWMutex
+	backend stateBackend
+	data    State
 }
 
 func NewStore(path string) (*Store, error) {
-	s := &Store{path: path}
-	if err := s.load(); err != nil {
+	return newStore(newFileStateBackend(path), nil)
+}
+
+func newStore(backend stateBackend, initial *State) (*Store, error) {
+	s := &Store{backend: backend}
+	state, err := backend.Load()
+	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
-		s.data = seedState()
+		if initial != nil {
+			s.data = *initial
+		} else {
+			s.data = seedState()
+		}
 		if err := s.saveLocked(); err != nil {
 			return nil, err
 		}
+	} else {
+		s.data = state
 	}
 	return s, nil
 }
@@ -42,31 +52,13 @@ func (s *Store) Snapshot() State {
 	return out
 }
 
-func (s *Store) load() error {
-	b, err := os.ReadFile(s.path)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(b, &s.data); err != nil {
-		return fmt.Errorf("decode state: %w", err)
-	}
-	return nil
+func (s *Store) saveLocked() error {
+	return s.backend.Save(s.data)
 }
 
-func (s *Store) saveLocked() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
-}
+func (s *Store) Check(ctx context.Context) error { return s.backend.Check(ctx) }
+func (s *Store) Close(ctx context.Context) error { return s.backend.Close(ctx) }
+func (s *Store) BackendName() string             { return s.backend.Name() }
 
 func newID(prefix string) string {
 	b := make([]byte, 6)
