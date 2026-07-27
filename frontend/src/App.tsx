@@ -31,7 +31,7 @@ export default function App(){
   <Show when={authenticated()} fallback={<Login onLogin={login}/> }><div class="app-shell">
     <Show when={mobileNav()}><button class="scrim" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/></Show>
     <aside classList={{sidebar:true,open:mobileNav()}}>
-      <div class="brand"><div class="brand-mark">T</div><div><strong>tempo</strong><span>work in motion</span></div><button class="close-nav" onClick={()=>setMobileNav(false)}>×</button></div>
+      <button class="close-nav" aria-label="Close navigation" onClick={()=>setMobileNav(false)}>×</button>
       <div class="workspace-label workspace-head"><span>Workspace</span><button aria-label="Add workspace" onClick={()=>setWorkspaceOpen(true)}>＋</button></div>
       <div class="workspace-switch"><span class="workspace-avatar" style={{background:workspace()?.color??"#7c5cff"}}>{workspace()?.name?.[0]??"N"}</span><select aria-label="Select workspace" value={workspace()?.id} onChange={e=>chooseWorkspace(e.currentTarget.value)}><For each={state().workspaces}>{w=><option value={w.id}>{w.name}</option>}</For></select><b>⌄</b></div>
       <nav class="nav-list">
