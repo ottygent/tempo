@@ -66,7 +66,7 @@ Keep the URI in a mode-`0600` systemd environment file; never commit it or pass 
 
 ## Build from source
 
-Requirements: Go 1.23+, Node.js 22+, and pnpm 11+.
+Requirements: Go 1.25+, Node.js 22+, and pnpm 11+.
 
 ```bash
 make install
