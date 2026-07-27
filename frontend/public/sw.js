@@ -1,4 +1,4 @@
-const CACHE_NAME = "tempo-shell-v1";
+const CACHE_NAME = "tempo-shell-v2";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -35,6 +35,18 @@ self.addEventListener("fetch", event => {
           return response;
         })
         .catch(() => caches.match("/"))
+    );
+    return;
+  }
+
+  if (url.pathname === "/manifest.webmanifest") {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
+          return response;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
