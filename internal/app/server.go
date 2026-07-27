@@ -303,6 +303,9 @@ func spaHandler(static fs.FS) http.Handler {
 			files.ServeHTTP(w, clone)
 			return
 		}
+		if strings.HasSuffix(path, ".webmanifest") {
+			w.Header().Set("Content-Type", "application/manifest+json")
+		}
 		files.ServeHTTP(w, r)
 	})
 }

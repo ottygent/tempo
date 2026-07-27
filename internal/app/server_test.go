@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 const testPassword = "correct-horse-battery-staple"
@@ -231,6 +232,20 @@ func TestSecureCookieAndHSTS(t *testing.T) {
 	cookies := login.Result().Cookies()
 	if login.Code != http.StatusOK || len(cookies) != 1 || !cookies[0].Secure {
 		t.Fatalf("secure cookie missing: status=%d cookies=%+v", login.Code, cookies)
+	}
+}
+
+func TestSPAHandlerServesWebManifestContentType(t *testing.T) {
+	static := fstest.MapFS{
+		"index.html":           {Data: []byte("<main>Tempo</main>")},
+		"manifest.webmanifest": {Data: []byte(`{"name":"Tempo"}`)},
+	}
+	response := request(spaHandler(static), http.MethodGet, "/manifest.webmanifest", "", nil, "")
+	if response.Code != http.StatusOK {
+		t.Fatalf("manifest status=%d body=%s", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("Content-Type"); got != "application/manifest+json" {
+		t.Fatalf("manifest content type=%q", got)
 	}
 }
 
