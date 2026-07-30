@@ -1,5 +1,6 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { ApiError, api } from "./api";
+import type { AccountSettings, AuthSession } from "./api";
 import type { AppState, Document as ProjectDocument, Project, Task, TaskStatus } from "./types";
 import { dueTone, minutesLabel, monthGrid, parseMarkdown, secondsLabel, taskSeconds } from "./utils";
 
@@ -7,17 +8,18 @@ type View="overview"|"board"|"docs"|"timeline"|"calendar"|"time";
 const empty:AppState={version:1,workspaces:[],projects:[],tasks:[],timeEntries:[],documents:[]};
 const columns:{id:TaskStatus;label:string}[]=[{id:"backlog",label:"Backlog"},{id:"todo",label:"Ready"},{id:"progress",label:"In progress"},{id:"review",label:"Review"},{id:"done",label:"Done"}];
 const icons:Record<View,string>={overview:"⌂",board:"▦",docs:"▤",timeline:"↔",calendar:"□",time:"◷"};
+const characterCount=(value:string)=>[...value].length;
 
 export default function App(){
   const [state,setState]=createSignal<AppState>(empty),[selectedWorkspace,setSelectedWorkspace]=createSignal(""),[selectedProject,setSelectedProject]=createSignal(""),[view,setView]=createSignal<View>("overview");
-  const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[now,setNow]=createSignal(Date.now());
-  const [authenticated,setAuthenticated]=createSignal(false),[authReady,setAuthReady]=createSignal(false),[username,setUsername]=createSignal("");
+  const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[settingsOpen,setSettingsOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[now,setNow]=createSignal(Date.now());
+  const [authenticated,setAuthenticated]=createSignal(false),[authReady,setAuthReady]=createSignal(false),[username,setUsername]=createSignal(""),[email,setEmail]=createSignal("");
   let workspaceMenu!:HTMLDivElement;
   const handleError=(e:unknown,fallback:string)=>{if(e instanceof ApiError&&e.status===401){setAuthenticated(false);setState(empty);return}setError(e instanceof Error?e.message:fallback)};
   const refresh=async()=>{try{const next=await api.state();setState(next);const workspaceId=next.workspaces.some(w=>w.id===selectedWorkspace())?selectedWorkspace():(next.workspaces[0]?.id??"");setSelectedWorkspace(workspaceId);const available=next.projects.filter(p=>p.workspaceId===workspaceId&&p.status!=="archived");if(!available.some(p=>p.id===selectedProject()))setSelectedProject(available[0]?.id??"");setError("")}catch(e){handleError(e,"Unable to load Tempo")}finally{setLoading(false)}};
-  const bootstrap=async()=>{try{const session=await api.session();setAuthenticated(session.authenticated);setUsername(session.username??"");if(session.authenticated)await refresh();else setLoading(false)}catch(e){handleError(e,"Unable to check your session");setLoading(false)}finally{setAuthReady(true)}};
-  const login=async(user:string,password:string)=>{const session=await api.login(user,password);setAuthenticated(session.authenticated);setUsername(session.username??user);setLoading(true);await refresh()};
-  const logout=async()=>{try{await api.logout()}finally{setAuthenticated(false);setState(empty);setSelectedProject("");setSelectedWorkspace("")}};
+  const bootstrap=async()=>{try{const session=await api.session();setAuthenticated(session.authenticated);setUsername(session.username??"");setEmail(session.email??"");if(session.authenticated)await refresh();else setLoading(false)}catch(e){handleError(e,"Unable to check your session");setLoading(false)}finally{setAuthReady(true)}};
+  const login=async(user:string,password:string)=>{const session=await api.login(user,password);setAuthenticated(session.authenticated);setUsername(session.username??user);setEmail(session.email??"");setLoading(true);await refresh()};
+  const logout=async()=>{try{await api.logout()}finally{setAuthenticated(false);setEmail("");setSettingsOpen(false);setState(empty);setSelectedProject("");setSelectedWorkspace("")}};
   onMount(()=>{void bootstrap();const timer=setInterval(()=>setNow(Date.now()),1000),closeMenu=(event:PointerEvent)=>{const target=event.target as Element;if(workspaceMenuOpen()&&workspaceMenu&&!workspaceMenu.contains(target))setWorkspaceMenuOpen(false);if(projectMenu()&&!target.closest?.(".project-actions"))setProjectMenu("")},closeOnEscape=(event:KeyboardEvent)=>{if(event.key==="Escape"){setWorkspaceMenuOpen(false);setProjectMenu("")}};document.addEventListener("pointerdown",closeMenu);document.addEventListener("keydown",closeOnEscape);onCleanup(()=>{clearInterval(timer);document.removeEventListener("pointerdown",closeMenu);document.removeEventListener("keydown",closeOnEscape)})});
   const workspace=createMemo(()=>state().workspaces.find(w=>w.id===selectedWorkspace())??state().workspaces[0]);
   const projects=createMemo(()=>state().projects.filter(p=>p.workspaceId===workspace()?.id&&p.status!=="archived"));
@@ -28,6 +30,7 @@ export default function App(){
   const running=createMemo(()=>state().timeEntries.find(e=>!e.stoppedAt));
   const tracked=createMemo(()=>tasks().reduce((sum,t)=>sum+taskSeconds(t.id,state().timeEntries,now()),0));
   const mutate=async(action:()=>Promise<unknown>)=>{try{await action();await refresh()}catch(e){handleError(e,"Action failed")}};
+  const updateSettings=async(input:AccountSettings)=>{try{return await api.updateSettings(input)}catch(e){if(e instanceof ApiError&&e.status===401)handleError(e,"Your session has expired");throw e}};
   const moveQueues=new Map<string,Promise<void>>(),moveSequences=new Map<string,number>();
   const moveTask=(id:string,status:TaskStatus)=>{const task=state().tasks.find(candidate=>candidate.id===id);if(!task||task.status===status)return;setState(current=>({...current,tasks:current.tasks.map(candidate=>candidate.id===id?{...candidate,status}:candidate)}));const sequence=(moveSequences.get(id)??0)+1;moveSequences.set(id,sequence);const previous=moveQueues.get(id)??Promise.resolve();let queued:Promise<void>;queued=previous.catch(()=>{}).then(()=>api.updateTask(id,{status})).then(()=>{}).catch(e=>{if(moveSequences.get(id)===sequence)void refresh().then(()=>handleError(e,"Unable to move task"))}).finally(()=>{if(moveQueues.get(id)===queued)moveQueues.delete(id)});moveQueues.set(id,queued)};
   const archiveProject=(target:Project)=>{setProjectMenu("");if(selectedProject()===target.id)setSelectedProject("");void mutate(()=>api.updateProject(target.id,{status:"archived"}))};
@@ -36,7 +39,7 @@ export default function App(){
   const saveDocument=async(id:string,title:string,content:string)=>{try{const updated=await api.updateDocument(id,{title,content});setState(current=>({...current,documents:current.documents.map(document=>document.id===id?updated:document)}));return updated}catch(e){handleError(e,"Unable to save document");throw e}};
   const removeDocument=async(id:string)=>{try{await api.deleteDocument(id);setState(current=>({...current,documents:current.documents.filter(document=>document.id!==id)}))}catch(e){handleError(e,"Unable to delete document");throw e}};
   return <><Show when={authReady()} fallback={<div class="auth-loading"><span/>Securing your workspace…</div>}>
-  <Show when={authenticated()} fallback={<Login onLogin={login}/> }><div class="app-shell">
+  <Show when={authenticated()} fallback={<Login defaultUsername={username()||"admin"} onLogin={login}/> }><div class="app-shell">
     <Show when={mobileNav()}><button class="scrim" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/></Show>
     <aside classList={{sidebar:true,open:mobileNav()}}>
       <button class="close-nav" aria-label="Close navigation" onClick={()=>setMobileNav(false)}>×</button>
@@ -74,6 +77,7 @@ export default function App(){
           <button class="icon-button" aria-label="Search" title="Search">⌕</button>
           <button class="icon-button" aria-label="Notifications" title="Notifications">♢</button>
           <Show when={view()!=="docs"}><button class="primary" disabled={!project()} onClick={()=>setTaskOpen(true)}>+ New task</button></Show>
+          <button class="icon-button settings-button" aria-label="Account settings" title="Account settings" onClick={()=>setSettingsOpen(true)}>⚙</button>
           <div class="header-user" aria-label={`${username()} account`}>
             <div class="header-avatar" aria-hidden="true">{username().slice(0,2).toUpperCase()}</div>
             <div class="header-user-copy"><strong>{username()}</strong><span>Workspace owner</span></div>
@@ -94,13 +98,14 @@ export default function App(){
     <Show when={taskOpen()}><TaskModal project={project()} close={()=>setTaskOpen(false)} save={async task=>{await mutate(()=>api.createTask(task));setTaskOpen(false)}}/></Show>
     <Show when={projectOpen()}><ProjectModal workspaceId={workspace()?.id??""} close={()=>setProjectOpen(false)} save={async p=>{await mutate(()=>api.createProject(p));setProjectOpen(false)}}/></Show>
     <Show when={workspaceOpen()}><WorkspaceModal close={()=>setWorkspaceOpen(false)} save={async w=>{let createdId="";await mutate(async()=>{const created=await api.createWorkspace(w);createdId=created.id});if(createdId){setSelectedWorkspace(createdId);setSelectedProject("");setWorkspaceOpen(false)}}}/></Show>
+    <Show when={settingsOpen()}><SettingsModal username={username()} email={email()} close={()=>setSettingsOpen(false)} save={updateSettings} saved={(session,input)=>{setUsername(session.username??input.username);setEmail(session.email??input.email);setSettingsOpen(false)}}/></Show>
     <Show when={deleteTarget()}>{target=><DeleteProjectModal project={target()} close={()=>setDeleteTarget(undefined)} confirm={()=>deleteProject(target())}/>}</Show>
   </div></Show></Show></>
 }
 
-function Login(props:{onLogin:(username:string,password:string)=>Promise<void>}){
+function Login(props:{defaultUsername:string;onLogin:(username:string,password:string)=>Promise<void>}){
   const [error,setError]=createSignal(""),[submitting,setSubmitting]=createSignal(false);let form!:HTMLFormElement;
-  return <main class="login-page"><section class="login-card"><div class="login-brand"><div class="brand-mark">T</div><div><strong>tempo</strong><span>work in motion</span></div></div><div class="login-copy"><span>WELCOME BACK</span><h1>Sign in to your workspace</h1><p>Your projects, plans, and tracked time are protected.</p></div><Show when={error()}><div class="login-error" role="alert">{error()}</div></Show><form ref={form} onSubmit={async e=>{e.preventDefault();setSubmitting(true);setError("");const data=new FormData(form);try{await props.onLogin(String(data.get("username")),String(data.get("password")))}catch(e){setError(e instanceof Error?e.message:"Sign in failed")}finally{setSubmitting(false)}}}><label>Username<input name="username" autocomplete="username" required value="admin"/></label><label>Password<input name="password" type="password" autocomplete="current-password" required autofocus/></label><button class="primary login-submit" disabled={submitting()}>{submitting()?"Signing in…":"Sign in"}</button></form><p class="login-note">HttpOnly session · SameSite Strict · 8-hour expiry</p></section></main>
+  return <main class="login-page"><section class="login-card"><div class="login-brand"><div class="brand-mark">T</div><div><strong>tempo</strong><span>work in motion</span></div></div><div class="login-copy"><span>WELCOME BACK</span><h1>Sign in to your workspace</h1><p>Your projects, plans, and tracked time are protected.</p></div><Show when={error()}><div class="login-error" role="alert">{error()}</div></Show><form ref={form} onSubmit={async e=>{e.preventDefault();setSubmitting(true);setError("");const data=new FormData(form);try{await props.onLogin(String(data.get("username")),String(data.get("password")))}catch(e){setError(e instanceof Error?e.message:"Sign in failed")}finally{setSubmitting(false)}}}><label>Username<input name="username" autocomplete="username" required value={props.defaultUsername}/></label><label>Password<input name="password" type="password" autocomplete="current-password" required autofocus/></label><button class="primary login-submit" disabled={submitting()}>{submitting()?"Signing in…":"Sign in"}</button></form><p class="login-note">HttpOnly session · SameSite Strict · 8-hour expiry</p></section></main>
 }
 
 function Overview(props:{project:Project;tasks:Task[];tracked:number;setView:(v:View)=>void}){
@@ -148,7 +153,65 @@ function Timeline(props:{tasks:Task[]}){const start=()=>{const dates=props.tasks
 function Calendar(props:{tasks:Task[]}){const [anchor,setAnchor]=createSignal(new Date()),days=createMemo(()=>monthGrid(anchor()));const change=(n:number)=>{const d=new Date(anchor());d.setMonth(d.getMonth()+n);setAnchor(d)};return <div class="calendar-view"><div class="view-toolbar"><div><h2>{anchor().toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2><span>{props.tasks.filter(t=>t.dueDate.startsWith(`${anchor().getFullYear()}-${String(anchor().getMonth()+1).padStart(2,"0")}`)).length} milestones this month</span></div><div class="calendar-controls"><button onClick={()=>change(-1)}>←</button><button onClick={()=>setAnchor(new Date())}>Today</button><button onClick={()=>change(1)}>→</button></div></div><section class="calendar-grid"><For each={["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]}>{d=><header>{d}</header>}</For><For each={days()}>{d=>{const key=()=>d.toISOString().slice(0,10),dayTasks=()=>props.tasks.filter(t=>t.dueDate===key());return <div classList={{day:true,muted:d.getMonth()!==anchor().getMonth(),today:key()===new Date().toISOString().slice(0,10)}}><b>{d.getDate()}</b><For each={dayTasks()}>{t=><span class={`event ${t.priority}`}>{t.title}</span>}</For></div>}}</For></section></div>}
 function TimeView(props:{tasks:Task[];state:AppState;now:number;mutate:(a:()=>Promise<unknown>)=>Promise<void>}){const active=()=>props.state.timeEntries.find(e=>!e.stoppedAt),activeTask=()=>props.tasks.find(t=>t.id===active()?.taskId);return <div class="time-view"><div class="timer-hero"><div><span>{active()?"TRACKING NOW":"FOCUS TIMER"}</span><h2>{activeTask()?.title??"Ready when you are"}</h2><p>{activeTask()?.assignee??"Choose a project task to begin tracking time."}</p></div><strong>{active()?secondsLabel(taskSeconds(active()!.taskId,[active()!],props.now)):"0:00"}</strong><Show when={active()}><button class="stop" onClick={()=>void props.mutate(()=>api.stopTimer())}>■ Stop timer</button></Show></div><section class="panel time-list"><div class="panel-title"><div><span>PROJECT TASKS</span><h2>Time by task</h2></div><strong>{secondsLabel(props.tasks.reduce((s,t)=>s+taskSeconds(t.id,props.state.timeEntries,props.now),0))}</strong></div><For each={props.tasks}>{t=><div class="time-row"><button disabled={!!active()} onClick={()=>void props.mutate(()=>api.startTimer(t.id))}>▶</button><div><strong>{t.title}</strong><span>{t.assignee||"Unassigned"} · estimate {minutesLabel(t.estimateMinutes)}</span></div><div class="time-progress"><i style={{width:`${Math.min(100,taskSeconds(t.id,props.state.timeEntries,props.now)/(Math.max(1,t.estimateMinutes)*60)*100)}%`}}/></div><b>{secondsLabel(taskSeconds(t.id,props.state.timeEntries,props.now))}</b></div>}</For></section></div>}
 
-function Modal(props:{title:string;close:()=>void;children:any}){return <div class="modal-layer" onMouseDown={e=>{if(e.target===e.currentTarget)props.close()}}><section class="modal" role="dialog" aria-modal="true" aria-label={props.title}><header><div><span>TEMPO</span><h2>{props.title}</h2></div><button aria-label="Close modal" onClick={props.close}>×</button></header>{props.children}</section></div>}
+function Modal(props:{title:string;close:()=>void;children:any}){
+  const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:undefined;
+  let dialog!:HTMLElement;
+  const focusable=()=>Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(element=>element.getClientRects().length>0);
+  const keydown=(event:KeyboardEvent)=>{
+    if(event.key==="Escape"){event.preventDefault();props.close();return}
+    if(event.key!=="Tab")return;
+    const items=focusable(),first=items[0],last=items.at(-1);
+    if(!first||!last)return;
+    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+  };
+  onMount(()=>document.addEventListener("keydown",keydown));
+  onCleanup(()=>{document.removeEventListener("keydown",keydown);if(previousFocus?.isConnected)requestAnimationFrame(()=>previousFocus.focus())});
+  return <div class="modal-layer" onMouseDown={e=>{if(e.target===e.currentTarget)props.close()}}><section ref={dialog} class="modal" role="dialog" aria-modal="true" aria-label={props.title}><header><div><span>TEMPO</span><h2>{props.title}</h2></div><button aria-label="Close modal" onClick={props.close}>×</button></header>{props.children}</section></div>
+}
+export function SettingsModal(props:{username:string;email:string;close:()=>void;save:(input:AccountSettings)=>Promise<AuthSession>;saved:(session:AuthSession,input:AccountSettings)=>void}){
+  const [error,setError]=createSignal(""),[status,setStatus]=createSignal<"idle"|"saving">("idle");
+  let form!:HTMLFormElement;
+  const clearError=()=>setError("");
+  const close=()=>{if(status()!=="saving")props.close()};
+  return <Modal title="Account settings" close={close}>
+    <form class="settings-form" ref={form} aria-busy={status()==="saving"} novalidate onSubmit={async event=>{
+      event.preventDefault();
+      setError("");
+      const data=new FormData(form),username=String(data.get("username")).trim(),email=String(data.get("email")).trim(),currentPassword=String(data.get("currentPassword")),newPassword=String(data.get("newPassword")),confirmPassword=String(data.get("confirmPassword"));
+      if(!username||!currentPassword){setError("Username and current password are required.");return}
+      if((form.elements.namedItem("email") as HTMLInputElement).validity.typeMismatch){setError("Enter a valid email address.");return}
+      if(newPassword&&characterCount(newPassword)<12){setError("Your new password must be at least 12 characters.");return}
+      if(newPassword!==confirmPassword){setError("New password and confirmation do not match.");return}
+      const input:AccountSettings={username,email,currentPassword,...(newPassword?{newPassword}:{})};
+      setStatus("saving");
+      try{const session=await props.save(input);props.saved(session,input)}
+      catch(cause){setStatus("idle");setError(cause instanceof Error?cause.message:"Unable to save account settings.")}
+    }}>
+      <div class="settings-intro"><span class="settings-avatar" aria-hidden="true">{props.username.slice(0,2).toUpperCase()}</span><div><strong>Keep your account current</strong><p>Update how you appear in Tempo or secure your sign-in.</p></div></div>
+      <section class="settings-section" aria-labelledby="profile-settings-heading">
+        <div class="settings-section-heading"><span aria-hidden="true">01</span><div><h3 id="profile-settings-heading">Profile</h3><p>Your username and account email.</p></div></div>
+        <div class="settings-grid">
+          <label>Username<input name="username" autocomplete="username" required maxlength={80} autofocus value={props.username} disabled={status()==="saving"} onInput={clearError}/><small>Shown in your workspace header.</small></label>
+          <label>Email address<input name="email" type="email" autocomplete="email" maxlength={254} value={props.email} disabled={status()==="saving"} onInput={clearError}/><small>Optional account contact.</small></label>
+        </div>
+      </section>
+      <section class="settings-section" aria-labelledby="security-settings-heading">
+        <div class="settings-section-heading"><span aria-hidden="true">02</span><div><h3 id="security-settings-heading">Security</h3><p>Confirm your identity before saving any change.</p></div></div>
+        <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required disabled={status()==="saving"} onInput={clearError}/></label>
+        <div class="settings-grid">
+          <label>New password <span class="optional">Optional</span><input name="newPassword" type="password" autocomplete="new-password" minlength={12} disabled={status()==="saving"} onInput={clearError}/><small>Use 12 or more characters.</small></label>
+          <label>Confirm new password <span class="optional">Optional</span><input name="confirmPassword" type="password" autocomplete="new-password" disabled={status()==="saving"} onInput={clearError}/><small>Repeat the new password exactly.</small></label>
+        </div>
+      </section>
+      <div class="settings-feedback" aria-live="polite">
+        <Show when={error()}><div class="settings-error" role="alert"><span aria-hidden="true">!</span>{error()}</div></Show>
+        <Show when={!error()&&status()==="saving"}><p>Saving account changes…</p></Show>
+      </div>
+      <footer><button type="button" disabled={status()==="saving"} onClick={close}>Cancel</button><button class="primary" type="submit" disabled={status()==="saving"}>{status()==="saving"?"Saving…":"Save changes"}</button></footer>
+    </form>
+  </Modal>
+}
 function DeleteProjectModal(props:{project:Project;close:()=>void;confirm:()=>Promise<void>}){const [deleting,setDeleting]=createSignal(false);return <Modal title="Delete project?" close={props.close}><div class="confirm-project-delete"><p><strong>{props.project.name}</strong> will be permanently deleted.</p><p>All tasks and tracked time belonging to this project will also be removed. This action cannot be undone.</p><footer><button type="button" disabled={deleting()} onClick={props.close}>Cancel</button><button class="danger-button" disabled={deleting()} onClick={async()=>{setDeleting(true);await props.confirm();setDeleting(false)}}>{deleting()?"Deleting…":"Delete project"}</button></footer></div></Modal>}
 function TaskModal(props:{project:Project|undefined;close:()=>void;save:(t:Partial<Task>)=>Promise<void>}){const [saving,setSaving]=createSignal(false);let form!:HTMLFormElement;return <Modal title="Create a focused task" close={props.close}><form ref={form} onSubmit={async e=>{e.preventDefault();setSaving(true);const d=new FormData(form);await props.save({projectId:props.project?.id,title:String(d.get("title")),description:String(d.get("description")),status:String(d.get("status")) as TaskStatus,priority:String(d.get("priority")),assignee:String(d.get("assignee")),startDate:String(d.get("startDate")),dueDate:String(d.get("dueDate")),estimateMinutes:Number(d.get("estimateMinutes")),tags:String(d.get("tags")).split(",").map(x=>x.trim()).filter(Boolean)});setSaving(false)}}><label>Task title<input name="title" required autofocus placeholder="What needs to move?"/></label><label>Description<textarea name="description" rows="3" placeholder="A clear definition of done"/></label><div class="form-grid"><label>Status<select name="status"><option value="todo">Ready</option><option value="backlog">Backlog</option><option value="progress">In progress</option><option value="review">Review</option></select></label><label>Priority<select name="priority"><option>medium</option><option>high</option><option>low</option></select></label><label>Assignee<input name="assignee" placeholder="Maya"/></label><label>Estimate (minutes)<input name="estimateMinutes" type="number" min="0" value="60"/></label><label>Start date<input name="startDate" type="date"/></label><label>Due date<input name="dueDate" type="date"/></label></div><label>Tags<input name="tags" placeholder="design, launch"/></label><footer><button type="button" onClick={props.close}>Cancel</button><button class="primary" disabled={saving()}>{saving()?"Creating…":"Create task"}</button></footer></form></Modal>}
 function ProjectModal(props:{workspaceId:string;close:()=>void;save:(p:Partial<Project>)=>Promise<void>}){let form!:HTMLFormElement;return <Modal title="Create a project" close={props.close}><form ref={form} onSubmit={async e=>{e.preventDefault();const d=new FormData(form);await props.save({workspaceId:props.workspaceId,name:String(d.get("name")),description:String(d.get("description")),color:String(d.get("color")),startDate:String(d.get("startDate")),dueDate:String(d.get("dueDate"))})}}><label>Project name<input name="name" required autofocus placeholder="Website launch"/></label><label>Description<textarea name="description" rows="3"/></label><div class="form-grid project-meta-grid"><label class="project-color-field">Color<input name="color" type="color" value="#7c5cff"/></label><label>Start date<input name="startDate" type="date"/></label><label>Due date<input name="dueDate" type="date"/></label></div><footer><button type="button" onClick={props.close}>Cancel</button><button class="primary">Create project</button></footer></form></Modal>}

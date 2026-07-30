@@ -6,6 +6,7 @@ Tempo is a lightweight workspace and project-management application built with *
 
 - Multiple workspaces and projects
 - Cookie-based admin authentication with persistent PBKDF2 credentials
+- In-app username, contact email, and password settings with current-password verification
 - HttpOnly, SameSite=Strict, signed 8-hour sessions and CSRF-protected mutations
 - Login throttling, same-origin enforcement, security headers, and logout
 - Project overview with progress, tracked time, open work, focus, and upcoming dates
@@ -116,7 +117,7 @@ Tempo serializes mutations under a read/write mutex. JSON mode writes and syncs 
 
 When MongoDB is enabled and its state document is absent, Tempo imports `TEMPO_DATA` exactly once. If the document already exists, MongoDB always wins and the JSON source is not reapplied. Preserve the JSON file as a rollback backup after migration. Back up MongoDB with authenticated `mongodump`; restore into an empty collection before startup.
 
-Authentication data is stored separately in `<state-file>.auth.json` by default. It contains a salt, PBKDF2-HMAC-SHA256 password hash, iteration count, and random session-signing key—never the plaintext password. To reset the admin credential, stop Tempo, remove only the auth file, and restart once with a new `TEMPO_ADMIN_PASSWORD`. Existing sessions become invalid.
+Authentication data is stored separately in `<state-file>.auth.json` by default. It contains the account username and optional contact email alongside a salt, PBKDF2-HMAC-SHA256 password hash, iteration count, and random session-signing key—never the plaintext password. In-app username and password changes rotate the signing key, invalidating older sessions. To reset a forgotten admin credential, stop Tempo, remove only the auth file, and restart once with a new `TEMPO_ADMIN_PASSWORD`.
 
 ## API
 
@@ -126,6 +127,7 @@ Authentication data is stored separately in `<state-file>.auth.json` by default.
 | `GET` | `/api/auth/session` | Current login and in-memory CSRF token |
 | `POST` | `/api/auth/login` | Authenticate and issue the HttpOnly cookie |
 | `POST` | `/api/auth/logout` | Clear the current cookie |
+| `PATCH` | `/api/auth/settings` | Update the singleton account and refresh its session |
 | `GET` | `/api/state` | Complete workspace state |
 | `POST` | `/api/workspaces` | Create workspace |
 | `POST` | `/api/projects` | Create project |
@@ -154,4 +156,4 @@ qa/run-qa.mjs              production browser workflow
 
 ## Current deployment boundary
 
-Tempo provides one persistent admin identity and cookie-based session protection. It does **not** yet provide account registration, password recovery, roles, or multi-tenant authorization. For internet exposure, terminate TLS at a trusted reverse proxy and set `TEMPO_SECURE_COOKIE=true` so browsers send the cookie only over HTTPS.
+Tempo provides one editable, persistent admin identity and cookie-based session protection. It does **not** yet provide account registration, password recovery, roles, or multi-tenant authorization. For internet exposure, terminate TLS at a trusted reverse proxy and set `TEMPO_SECURE_COOKIE=true` so browsers send the cookie only over HTTPS.

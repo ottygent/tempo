@@ -1,14 +1,29 @@
 import type { AppState, Document, Project, Task, TimeEntry, Workspace } from "./types";
 
-export interface AuthSession { authenticated:boolean; username?:string; csrfToken?:string; expires?:number }
+export interface AuthSession { authenticated:boolean; username?:string; email?:string; csrfToken?:string; expires?:number }
+export interface AccountSettings {
+  username:string;
+  email:string;
+  currentPassword:string;
+  newPassword?:string;
+}
 export class ApiError extends Error { constructor(message:string,public readonly status:number){super(message)} }
 let csrfToken="";
+const unsafe=(method:string|undefined)=>!!method&&!["GET","HEAD","OPTIONS"].includes(method.toUpperCase());
 
-async function call<T>(url:string, init?:RequestInit):Promise<T>{
+async function call<T>(url:string, init?:RequestInit, retryCSRF=true):Promise<T>{
   const headers:Record<string,string>={"content-type":"application/json",...(init?.headers as Record<string,string>|undefined)};
-  if(init?.method&&!["GET","HEAD","OPTIONS"].includes(init.method.toUpperCase())&&csrfToken)headers["x-csrf-token"]=csrfToken;
+  if(unsafe(init?.method)&&csrfToken)headers["x-csrf-token"]=csrfToken;
   const response=await fetch(url,{...init,credentials:"same-origin",headers});
-  if(!response.ok){const body=await response.json().catch(()=>({error:response.statusText})) as {error?:string};throw new ApiError(body.error??response.statusText,response.status)}
+  if(!response.ok){
+    const body=await response.json().catch(()=>({error:response.statusText})) as {error?:string};
+    if(response.status===403&&body.error==="invalid CSRF token"&&retryCSRF&&unsafe(init?.method)){
+      const session=remember(await call<AuthSession>("/api/auth/session",undefined,false));
+      if(!session.authenticated)throw new ApiError("authentication required",401);
+      return call<T>(url,init,false);
+    }
+    throw new ApiError(body.error??response.statusText,response.status);
+  }
   return response.json() as Promise<T>;
 }
 function remember(session:AuthSession){csrfToken=session.csrfToken??"";return session}
@@ -16,6 +31,7 @@ export const api={
   session:async()=>remember(await call<AuthSession>("/api/auth/session")),
   login:async(username:string,password:string)=>remember(await call<AuthSession>("/api/auth/login",{method:"POST",body:JSON.stringify({username,password})})),
   logout:async()=>{const result=await call<AuthSession>("/api/auth/logout",{method:"POST",body:"{}"});csrfToken="";return result},
+  updateSettings:async(body:AccountSettings)=>remember(await call<AuthSession>("/api/auth/settings",{method:"PATCH",body:JSON.stringify(body)})),
   state:()=>call<AppState>("/api/state"),
   createWorkspace:(body:Partial<Workspace>)=>call<Workspace>("/api/workspaces",{method:"POST",body:JSON.stringify(body)}),
   createProject:(body:Partial<Project>)=>call<Project>("/api/projects",{method:"POST",body:JSON.stringify(body)}),

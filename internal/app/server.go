@@ -3,12 +3,20 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
+)
+
+const (
+	maxUsernameLength = 100
+	maxEmailLength    = 254
 )
 
 type Server struct {
@@ -25,6 +33,7 @@ func NewServer(store *Store, static fs.FS, logger *slog.Logger, auth *Auth) http
 	mux.HandleFunc("GET /api/auth/session", s.authSession)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("PATCH /api/auth/settings", s.updateAuthSettings)
 	mux.HandleFunc("GET /api/state", s.state)
 	mux.HandleFunc("POST /api/workspaces", s.createWorkspace)
 	mux.HandleFunc("POST /api/projects", s.createProject)
@@ -104,7 +113,14 @@ func readJSON(r *http.Request, value any) error {
 	defer r.Body.Close()
 	d := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
 	d.DisallowUnknownFields()
-	return d.Decode(value)
+	if err := d.Decode(value); err != nil {
+		return err
+	}
+	var extra any
+	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain exactly one JSON value")
+	}
+	return nil
 }
 func writeError(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
@@ -119,12 +135,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "storage": s.store.BackendName()})
 }
 func (s *Server) authSession(w http.ResponseWriter, r *http.Request) {
-	session, ok := s.auth.Session(r)
+	session, email, csrf, ok := s.auth.SessionDetails(r)
 	if !ok {
 		writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": session.Username, "csrfToken": s.auth.csrf(session), "expires": session.Expires})
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": session.Username, "email": email, "csrfToken": csrf, "expires": session.Expires})
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
@@ -141,23 +157,91 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("invalid login request"))
 		return
 	}
-	if !s.auth.CheckCredentials(credentials.Username, credentials.Password) {
+	session, email, csrf, authenticated, err := s.auth.AuthenticateAndIssue(w, credentials.Username, credentials.Password)
+	if err != nil {
+		s.logger.Error("session creation failed", "error", err)
+		writeError(w, http.StatusInternalServerError, errors.New("could not create session"))
+		return
+	}
+	if !authenticated {
 		s.auth.RecordFailure(ip)
 		writeError(w, http.StatusUnauthorized, errors.New("invalid username or password"))
 		return
 	}
 	s.auth.ClearFailures(ip)
-	session, csrf, err := s.auth.Issue(w)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, errors.New("could not create session"))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": session.Username, "csrfToken": csrf, "expires": session.Expires})
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": session.Username, "email": email, "csrfToken": csrf, "expires": session.Expires})
 }
 func (s *Server) logout(w http.ResponseWriter, _ *http.Request) {
 	s.auth.Clear(w)
 	writeJSON(w, http.StatusOK, map[string]bool{"authenticated": false})
 }
+
+func (s *Server) updateAuthSettings(w http.ResponseWriter, r *http.Request) {
+	var settings struct {
+		Username        *string `json:"username"`
+		Email           *string `json:"email"`
+		CurrentPassword *string `json:"currentPassword"`
+		NewPassword     *string `json:"newPassword"`
+	}
+	if err := readJSON(r, &settings); err != nil {
+		writeError(w, http.StatusBadRequest, errors.New("invalid settings request"))
+		return
+	}
+	if settings.CurrentPassword == nil || *settings.CurrentPassword == "" {
+		writeError(w, http.StatusUnprocessableEntity, errors.New("current password is required"))
+		return
+	}
+	if settings.Username != nil {
+		value := strings.TrimSpace(*settings.Username)
+		if value == "" {
+			writeError(w, http.StatusUnprocessableEntity, errors.New("username is required"))
+			return
+		}
+		if utf8.RuneCountInString(value) > maxUsernameLength {
+			writeError(w, http.StatusUnprocessableEntity, errors.New("username is too long"))
+			return
+		}
+		settings.Username = &value
+	}
+	if settings.Email != nil {
+		value := strings.TrimSpace(*settings.Email)
+		if len(value) > maxEmailLength {
+			writeError(w, http.StatusUnprocessableEntity, errors.New("email is too long"))
+			return
+		}
+		if value != "" {
+			address, err := mail.ParseAddress(value)
+			if err != nil || address.Address != value {
+				writeError(w, http.StatusUnprocessableEntity, errors.New("email is invalid"))
+				return
+			}
+		}
+		settings.Email = &value
+	}
+	if settings.NewPassword != nil && *settings.NewPassword != "" && utf8.RuneCountInString(*settings.NewPassword) < 12 {
+		writeError(w, http.StatusUnprocessableEntity, errors.New("new password must contain at least 12 characters"))
+		return
+	}
+
+	session, email, csrf, err := s.auth.UpdateSettingsAndIssue(
+		w,
+		settings.Username,
+		settings.Email,
+		*settings.CurrentPassword,
+		settings.NewPassword,
+	)
+	if errors.Is(err, errInvalidCurrentPassword) {
+		writeError(w, http.StatusForbidden, errors.New("current password is incorrect"))
+		return
+	}
+	if err != nil {
+		s.logger.Error("account settings update failed", "error", err)
+		writeError(w, http.StatusInternalServerError, errors.New("could not update account settings"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": session.Username, "email": email, "csrfToken": csrf, "expires": session.Expires})
+}
+
 func (s *Server) state(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.store.Snapshot())
 }

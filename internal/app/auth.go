@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -29,6 +30,7 @@ const (
 
 type authFile struct {
 	Username        string `json:"username"`
+	Email           string `json:"email,omitempty"`
 	Salt            string `json:"salt"`
 	PasswordHash    string `json:"passwordHash"`
 	SessionSecret   string `json:"sessionSecret"`
@@ -47,15 +49,20 @@ type Session struct {
 }
 
 type Auth struct {
-	username string
-	salt     []byte
-	hash     []byte
-	secret   []byte
-	rounds   int
-	secure   bool
-	mu       sync.Mutex
-	attempts map[string]loginAttempts
+	path          string
+	username      string
+	email         string
+	salt          []byte
+	hash          []byte
+	secret        []byte
+	rounds        int
+	secure        bool
+	credentialsMu sync.RWMutex
+	attemptsMu    sync.Mutex
+	attempts      map[string]loginAttempts
 }
+
+var errInvalidCurrentPassword = errors.New("invalid current password")
 
 func NewAuth(path, username, password string, secure bool) (*Auth, error) {
 	var config authFile
@@ -71,7 +78,7 @@ func NewAuth(path, username, password string, secure bool) (*Auth, error) {
 		if username == "" {
 			username = "admin"
 		}
-		if len(password) < 12 {
+		if utf8.RuneCountInString(password) < 12 {
 			return nil, errors.New("TEMPO_ADMIN_PASSWORD must contain at least 12 characters on first run")
 		}
 		salt, err := randomBytes(16)
@@ -105,25 +112,49 @@ func NewAuth(path, username, password string, secure bool) (*Auth, error) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		return nil, fmt.Errorf("secure auth file: %w", err)
 	}
-	return &Auth{username: config.Username, salt: salt, hash: hash, secret: secret, rounds: config.PBKDFIterations, secure: secure, attempts: make(map[string]loginAttempts)}, nil
+	return &Auth{
+		path:     path,
+		username: config.Username,
+		email:    config.Email,
+		salt:     salt,
+		hash:     hash,
+		secret:   secret,
+		rounds:   config.PBKDFIterations,
+		secure:   secure,
+		attempts: make(map[string]loginAttempts),
+	}, nil
 }
 
 func saveAuthFile(path string, config authFile) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create auth directory: %w", err)
 	}
 	body, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary auth file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("secure temporary auth file: %w", err)
+	}
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("write auth file: %w", err)
 	}
-	if err := os.Chmod(tmp, 0o600); err != nil {
-		return err
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close auth file: %w", err)
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace auth file: %w", err)
+	}
+	return nil
 }
 
 func derivePassword(password string, salt []byte, rounds int) []byte {
@@ -153,6 +184,12 @@ func randomBytes(size int) ([]byte, error) {
 }
 
 func (a *Auth) CheckCredentials(username, password string) bool {
+	a.credentialsMu.RLock()
+	defer a.credentialsMu.RUnlock()
+	return a.checkCredentialsLocked(username, password)
+}
+
+func (a *Auth) checkCredentialsLocked(username, password string) bool {
 	candidate := derivePassword(password, a.salt, a.rounds)
 	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(a.username))
 	hashOK := subtle.ConstantTimeCompare(candidate, a.hash)
@@ -164,15 +201,47 @@ func (a *Auth) Issue(w http.ResponseWriter) (Session, string, error) {
 	if err != nil {
 		return Session{}, "", err
 	}
-	session := Session{Username: a.username, Expires: time.Now().Add(sessionTTL).Unix(), Nonce: base64.RawURLEncoding.EncodeToString(nonceBytes)}
-	body, err := json.Marshal(session)
+	a.credentialsMu.RLock()
+	defer a.credentialsMu.RUnlock()
+	session, csrf, cookieValue, err := makeSession(a.username, a.secret, nonceBytes)
 	if err != nil {
 		return Session{}, "", err
 	}
+	a.setSessionCookie(w, cookieValue)
+	return session, csrf, nil
+}
+
+func (a *Auth) AuthenticateAndIssue(w http.ResponseWriter, username, password string) (Session, string, string, bool, error) {
+	nonceBytes, err := randomBytes(18)
+	if err != nil {
+		return Session{}, "", "", false, err
+	}
+	a.credentialsMu.RLock()
+	defer a.credentialsMu.RUnlock()
+	if !a.checkCredentialsLocked(username, password) {
+		return Session{}, "", "", false, nil
+	}
+	session, csrf, cookieValue, err := makeSession(a.username, a.secret, nonceBytes)
+	if err != nil {
+		return Session{}, "", "", false, err
+	}
+	a.setSessionCookie(w, cookieValue)
+	return session, a.email, csrf, true, nil
+}
+
+func makeSession(username string, secret, nonceBytes []byte) (Session, string, string, error) {
+	session := Session{Username: username, Expires: time.Now().Add(sessionTTL).Unix(), Nonce: base64.RawURLEncoding.EncodeToString(nonceBytes)}
+	body, err := json.Marshal(session)
+	if err != nil {
+		return Session{}, "", "", err
+	}
 	payload := base64.RawURLEncoding.EncodeToString(body)
-	value := payload + "." + a.sign(payload)
+	value := payload + "." + signWithSecret(secret, payload)
+	return session, csrfWithSecret(secret, session), value, nil
+}
+
+func (a *Auth) setSessionCookie(w http.ResponseWriter, value string) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: value, Path: "/", MaxAge: int(sessionTTL.Seconds()), HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteStrictMode})
-	return session, a.csrf(session), nil
 }
 
 func (a *Auth) Clear(w http.ResponseWriter) {
@@ -180,38 +249,126 @@ func (a *Auth) Clear(w http.ResponseWriter) {
 }
 
 func (a *Auth) Session(r *http.Request) (Session, bool) {
+	session, _, _, ok := a.SessionDetails(r)
+	return session, ok
+}
+
+func (a *Auth) SessionDetails(r *http.Request) (Session, string, string, bool) {
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
-		return Session{}, false
+		return Session{}, "", "", false
 	}
 	parts := strings.Split(cookie.Value, ".")
-	if len(parts) != 2 || subtle.ConstantTimeCompare([]byte(parts[1]), []byte(a.sign(parts[0]))) != 1 {
-		return Session{}, false
+	if len(parts) != 2 {
+		return Session{}, "", "", false
 	}
 	body, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return Session{}, false
+		return Session{}, "", "", false
 	}
 	var session Session
-	if json.Unmarshal(body, &session) != nil || session.Username != a.username || session.Expires <= time.Now().Unix() || session.Nonce == "" {
-		return Session{}, false
+	if json.Unmarshal(body, &session) != nil {
+		return Session{}, "", "", false
 	}
-	return session, true
+	a.credentialsMu.RLock()
+	defer a.credentialsMu.RUnlock()
+	if subtle.ConstantTimeCompare([]byte(parts[1]), []byte(signWithSecret(a.secret, parts[0]))) != 1 ||
+		session.Username != a.username ||
+		session.Expires <= time.Now().Unix() ||
+		session.Nonce == "" {
+		return Session{}, "", "", false
+	}
+	return session, a.email, csrfWithSecret(a.secret, session), true
 }
 
 func (a *Auth) VerifyCSRF(session Session, token string) bool {
-	expected := a.csrf(session)
+	a.credentialsMu.RLock()
+	defer a.credentialsMu.RUnlock()
+	expected := csrfWithSecret(a.secret, session)
 	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1
 }
 
 func (a *Auth) csrf(session Session) string {
-	return a.sign("csrf|" + session.Username + "|" + session.Nonce + "|" + fmt.Sprint(session.Expires))
+	a.credentialsMu.RLock()
+	defer a.credentialsMu.RUnlock()
+	return csrfWithSecret(a.secret, session)
 }
 
-func (a *Auth) sign(value string) string {
-	mac := hmac.New(sha256.New, a.secret)
+func csrfWithSecret(secret []byte, session Session) string {
+	return signWithSecret(secret, "csrf|"+session.Username+"|"+session.Nonce+"|"+fmt.Sprint(session.Expires))
+}
+
+func signWithSecret(secret []byte, value string) string {
+	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(value))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *Auth) UpdateSettingsAndIssue(w http.ResponseWriter, username, email *string, currentPassword string, newPassword *string) (Session, string, string, error) {
+	a.credentialsMu.Lock()
+	defer a.credentialsMu.Unlock()
+
+	currentHash := derivePassword(currentPassword, a.salt, a.rounds)
+	if subtle.ConstantTimeCompare(currentHash, a.hash) != 1 {
+		return Session{}, "", "", errInvalidCurrentPassword
+	}
+
+	nextUsername := a.username
+	if username != nil {
+		nextUsername = *username
+	}
+	nextEmail := a.email
+	if email != nil {
+		nextEmail = *email
+	}
+	nextSalt := append([]byte(nil), a.salt...)
+	nextHash := append([]byte(nil), a.hash...)
+	nextSecret := append([]byte(nil), a.secret...)
+
+	passwordChanged := newPassword != nil && *newPassword != ""
+	if passwordChanged {
+		var err error
+		nextSalt, err = randomBytes(16)
+		if err != nil {
+			return Session{}, "", "", err
+		}
+		nextHash = derivePassword(*newPassword, nextSalt, a.rounds)
+	}
+	if passwordChanged || nextUsername != a.username {
+		var err error
+		nextSecret, err = randomBytes(32)
+		if err != nil {
+			return Session{}, "", "", err
+		}
+	}
+	nonceBytes, err := randomBytes(18)
+	if err != nil {
+		return Session{}, "", "", err
+	}
+	session, csrf, cookieValue, err := makeSession(nextUsername, nextSecret, nonceBytes)
+	if err != nil {
+		return Session{}, "", "", err
+	}
+
+	config := authFile{
+		Username:        nextUsername,
+		Email:           nextEmail,
+		Salt:            hex.EncodeToString(nextSalt),
+		PasswordHash:    hex.EncodeToString(nextHash),
+		SessionSecret:   hex.EncodeToString(nextSecret),
+		PBKDFIterations: a.rounds,
+	}
+	if err := saveAuthFile(a.path, config); err != nil {
+		return Session{}, "", "", err
+	}
+
+	a.username = nextUsername
+	a.email = nextEmail
+	a.salt = nextSalt
+	a.hash = nextHash
+	a.secret = nextSecret
+	a.setSessionCookie(w, cookieValue)
+	return session, nextEmail, csrf, nil
 }
 
 func clientIP(r *http.Request) string {
@@ -223,8 +380,8 @@ func clientIP(r *http.Request) string {
 }
 
 func (a *Auth) LoginAllowed(ip string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.attemptsMu.Lock()
+	defer a.attemptsMu.Unlock()
 	entry, ok := a.attempts[ip]
 	if !ok || time.Since(entry.Since) > loginWindow {
 		delete(a.attempts, ip)
@@ -234,8 +391,8 @@ func (a *Auth) LoginAllowed(ip string) bool {
 }
 
 func (a *Auth) RecordFailure(ip string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.attemptsMu.Lock()
+	defer a.attemptsMu.Unlock()
 	entry := a.attempts[ip]
 	if entry.Since.IsZero() || time.Since(entry.Since) > loginWindow {
 		entry = loginAttempts{Since: time.Now()}
@@ -245,7 +402,7 @@ func (a *Auth) RecordFailure(ip string) {
 }
 
 func (a *Auth) ClearFailures(ip string) {
-	a.mu.Lock()
+	a.attemptsMu.Lock()
 	delete(a.attempts, ip)
-	a.mu.Unlock()
+	a.attemptsMu.Unlock()
 }
