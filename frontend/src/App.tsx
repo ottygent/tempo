@@ -74,10 +74,6 @@ export default function App(){
         <button class="menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}>☰</button>
         <strong class="project-title">{project()?.name??"Projects"}</strong>
         <div class="top-actions">
-          <button class="icon-button" aria-label="Search" title="Search">⌕</button>
-          <button class="icon-button" aria-label="Notifications" title="Notifications">♢</button>
-          <Show when={view()!=="docs"}><button class="primary" disabled={!project()} onClick={()=>setTaskOpen(true)}>+ New task</button></Show>
-          <button class="icon-button settings-button" aria-label="Account settings" title="Account settings" onClick={()=>setSettingsOpen(true)}>⚙</button>
           <div class="header-user" aria-label={`${username()} account`}>
             <div class="header-avatar" aria-hidden="true">{username().slice(0,2).toUpperCase()}</div>
             <div class="header-user-copy"><strong>{username()}</strong><span>Workspace owner</span></div>
@@ -85,6 +81,12 @@ export default function App(){
           </div>
         </div>
       </header>
+      <div class="action-dock" role="group" aria-label="Quick actions">
+        <button type="button" class="icon-button dock-action" aria-label="Search" title="Search">⌕</button>
+        <button type="button" class="icon-button dock-action" aria-label="Notifications" title="Notifications">♢</button>
+        <button type="button" class="icon-button settings-button dock-action" aria-label="Account settings" title="Account settings" onClick={()=>setSettingsOpen(true)}>⚙</button>
+        <Show when={view()!=="docs"}><button type="button" class="primary dock-new-task" disabled={!project()} onClick={()=>setTaskOpen(true)}><span aria-hidden="true">+</span> New task</button></Show>
+      </div>
       <Show when={error()}><div class="error-banner">{error()}<button onClick={()=>setError("")}>×</button></div></Show>
       <Show when={!loading()&&project()} fallback={<div class="loading">{loading()?"Loading your workspace…":"No active projects. Create a project to get started."}</div>}>
         <Show when={view()==="overview"}><Overview project={project()!} tasks={tasks()} tracked={tracked()} setView={setView}/></Show>

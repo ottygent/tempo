@@ -11,6 +11,7 @@ Tempo is a lightweight workspace and project-management application built with *
 - Login throttling, same-origin enforcement, security headers, and logout
 - Project overview with progress, tracked time, open work, focus, and upcoming dates
 - Task creation with status, priority, assignee, dates, estimates, and tags
+- Centered responsive quick-action dock for creation, search, notifications, and settings
 - Desktop, touch, and keyboard-accessible drag-and-drop Kanban board
 - Persistent one-at-a-time task timer and per-task/project totals
 - Six-week project timeline

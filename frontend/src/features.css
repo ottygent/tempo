@@ -134,6 +134,94 @@
   outline: none;
 }
 
+.app-shell {
+  --dock-clearance: 92px;
+  --topbar-height: 68px;
+}
+
+.main::after {
+  display: block;
+  height: var(--dock-clearance);
+  content: "";
+}
+
+.action-dock {
+  position: fixed;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: 246px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100vw - 270px);
+  margin-inline: auto;
+  padding: 7px;
+  border: 1px solid #dfe2e9cc;
+  border-radius: 18px;
+  background: #ffffffde;
+  box-shadow: 0 16px 38px #22293a2b, 0 3px 10px #22293a12;
+  backdrop-filter: blur(18px) saturate(1.35);
+}
+
+.action-dock .icon-button {
+  display: grid;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-color: transparent;
+  background: transparent;
+  font-size: 17px;
+}
+
+.action-dock .icon-button:hover {
+  border-color: #e3dffa;
+  background: #f2efff;
+  color: #6049c4;
+}
+
+.action-dock .dock-new-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  margin-left: 2px;
+  padding-inline: 16px;
+  white-space: nowrap;
+}
+
+.action-dock .dock-new-task > span {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.action-dock button:focus-visible {
+  outline: 3px solid #bcb0f6;
+  outline-offset: 2px;
+}
+
+.action-dock button:disabled {
+  transform: none;
+}
+
+.documents-view {
+  height: calc(100vh - var(--topbar-height) - var(--dock-clearance));
+  min-height: 560px;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .action-dock button {
+    transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease;
+  }
+
+  .action-dock button:not(:disabled):hover {
+    transform: translateY(-3px);
+  }
+}
+
 .settings-button {
   display: grid;
   flex: none;
@@ -312,14 +400,33 @@
 }
 
 @media (max-width: 760px) {
+  .app-shell {
+    --dock-clearance: 80px;
+    --topbar-height: 60px;
+  }
+
   .project-title {
     flex: 1;
   }
 
-  .top-actions .settings-button {
+  .action-dock {
+    right: 0;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 0;
+    max-width: calc(100vw - 16px);
+    padding: 6px;
+    border-radius: 16px;
+  }
+
+  .action-dock .icon-button {
     display: grid;
-    width: 30px;
-    height: 30px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .action-dock .dock-new-task {
+    height: 40px;
+    padding-inline: 13px;
   }
 
   .header-user {
@@ -361,10 +468,6 @@
 }
 
 @media (max-width: 380px) {
-  .topbar .primary {
-    padding-inline: 9px;
-  }
-
   .header-user {
     padding-left: 3px;
   }
@@ -379,8 +482,24 @@
     height: 28px;
   }
 
-  .top-actions .settings-button {
-    width: 28px;
-    height: 28px;
+  .action-dock {
+    gap: 4px;
+  }
+
+  .action-dock .icon-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .action-dock .dock-new-task {
+    height: 38px;
+    padding-inline: 11px;
+  }
+}
+
+@media (max-width: 900px) {
+  .documents-view {
+    height: auto;
+    min-height: calc(100vh - var(--topbar-height) - var(--dock-clearance));
   }
 }
