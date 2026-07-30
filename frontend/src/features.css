@@ -1,0 +1,62 @@
+/* Keep long project collections usable without moving the rest of the sidebar. */
+.project-list {
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #566074 #252c3a;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.project-list::-webkit-scrollbar {
+  width: 9px;
+}
+
+.project-list::-webkit-scrollbar-track {
+  background: #252c3a;
+  border-radius: 999px;
+}
+
+.project-list::-webkit-scrollbar-thumb {
+  background: #566074;
+  border: 2px solid #252c3a;
+  border-radius: 999px;
+}
+
+.project-list::-webkit-scrollbar-thumb:hover {
+  background: #707b91;
+}
+
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: start;
+}
+
+.project-select {
+  width: 100%;
+}
+
+.project-actions {
+  display: contents;
+}
+
+.project-menu-trigger {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.project-action-menu {
+  position: static;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: end;
+  margin: 2px 0 6px;
+}
+
+.sidebar-foot {
+  flex: none;
+}

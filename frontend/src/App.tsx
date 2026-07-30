@@ -45,7 +45,26 @@ export default function App(){
         <For each={Object.keys(icons) as View[]}>{item=><button classList={{active:view()===item}} onClick={()=>{setView(item);setMobileNav(false)}}><span>{icons[item]}</span>{item[0]?.toUpperCase()}{item.slice(1)}<Show when={item==="time"&&running()}><i class="live-dot"/></Show></button>}</For>
       </nav>
       <div class="project-head"><span>Projects</span><button aria-label="Add project" onClick={()=>setProjectOpen(true)}>+</button></div>
-      <div class="project-list"><For each={projects()}>{p=><div classList={{"project-row":true,active:project()?.id===p.id}}><button class="project-select" onClick={()=>{setSelectedProject(p.id);setMobileNav(false)}}><i style={{background:p.color}}/><span class="project-name">{p.name}</span><span class="project-count">{state().tasks.filter(t=>t.projectId===p.id&&t.status!=="done").length}</span></button><div class="project-actions"><button class="project-menu-trigger" aria-label={`Project actions for ${p.name}`} aria-haspopup="menu" aria-expanded={projectMenu()===p.id} onClick={()=>setProjectMenu(current=>current===p.id?"":p.id)}>⋯</button><Show when={projectMenu()===p.id}><div class="project-action-menu" role="menu"><button role="menuitem" onClick={()=>archiveProject(p)}>Archive project</button><button class="danger" role="menuitem" onClick={()=>{setProjectMenu("");setDeleteTarget(p)}}>Delete project</button></div></Show></div></div>}</For></div>
+      <div class="project-list">
+        <For each={projects()}>{p=>
+          <div classList={{"project-row":true,active:project()?.id===p.id}}>
+            <button class="project-select" onClick={()=>{setSelectedProject(p.id);setMobileNav(false)}}>
+              <i style={{background:p.color}}/>
+              <span class="project-name">{p.name}</span>
+              <span class="project-count">{state().tasks.filter(t=>t.projectId===p.id&&t.status!=="done").length}</span>
+            </button>
+            <div class="project-actions">
+              <button class="project-menu-trigger" aria-label={`Project actions for ${p.name}`} aria-haspopup="menu" aria-expanded={projectMenu()===p.id} onClick={()=>setProjectMenu(current=>current===p.id?"":p.id)}>⋯</button>
+              <Show when={projectMenu()===p.id}>
+                <div class="project-action-menu" role="menu" ref={element=>requestAnimationFrame(()=>element.scrollIntoView({block:"nearest"}))}>
+                  <button role="menuitem" onClick={()=>archiveProject(p)}>Archive project</button>
+                  <button class="danger" role="menuitem" onClick={()=>{setProjectMenu("");setDeleteTarget(p)}}>Delete project</button>
+                </div>
+              </Show>
+            </div>
+          </div>
+        }</For>
+      </div>
       <div class="sidebar-foot"><div class="avatar">{username().slice(0,2).toUpperCase()}</div><div><strong>{username()}</strong><span>Workspace owner</span></div><button aria-label="Log out" title="Log out" onClick={()=>void logout()}>↪</button></div>
     </aside>
     <main class="main">
