@@ -65,10 +65,22 @@ export default function App(){
           </div>
         }</For>
       </div>
-      <div class="sidebar-foot"><div class="avatar">{username().slice(0,2).toUpperCase()}</div><div><strong>{username()}</strong><span>Workspace owner</span></div><button aria-label="Log out" title="Log out" onClick={()=>void logout()}>↪</button></div>
     </aside>
     <main class="main">
-      <header class="topbar"><button class="menu" onClick={()=>setMobileNav(true)}>☰</button><strong class="project-title">{project()?.name??"Projects"}</strong><div class="top-actions"><button class="icon-button" title="Search">⌕</button><button class="icon-button" title="Notifications">♢</button><Show when={view()!=="docs"}><button class="primary" disabled={!project()} onClick={()=>setTaskOpen(true)}>+ New task</button></Show></div></header>
+      <header class="topbar">
+        <button class="menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}>☰</button>
+        <strong class="project-title">{project()?.name??"Projects"}</strong>
+        <div class="top-actions">
+          <button class="icon-button" aria-label="Search" title="Search">⌕</button>
+          <button class="icon-button" aria-label="Notifications" title="Notifications">♢</button>
+          <Show when={view()!=="docs"}><button class="primary" disabled={!project()} onClick={()=>setTaskOpen(true)}>+ New task</button></Show>
+          <div class="header-user" aria-label={`${username()} account`}>
+            <div class="header-avatar" aria-hidden="true">{username().slice(0,2).toUpperCase()}</div>
+            <div class="header-user-copy"><strong>{username()}</strong><span>Workspace owner</span></div>
+            <button class="header-logout" aria-label="Log out" title="Log out" onClick={()=>void logout()}>↪</button>
+          </div>
+        </div>
+      </header>
       <Show when={error()}><div class="error-banner">{error()}<button onClick={()=>setError("")}>×</button></div></Show>
       <Show when={!loading()&&project()} fallback={<div class="loading">{loading()?"Loading your workspace…":"No active projects. Create a project to get started."}</div>}>
         <Show when={view()==="overview"}><Overview project={project()!} tasks={tasks()} tracked={tracked()} setView={setView}/></Show>
