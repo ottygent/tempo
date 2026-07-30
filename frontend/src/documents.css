@@ -95,17 +95,15 @@
 }
 .document-list-item > span:nth-child(2) {
   min-width: 0;
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
 }
-.document-list-item strong,
-.document-list-item small {
-  white-space: nowrap;
+.document-list-item strong {
   overflow: hidden;
+  font-size: 12px;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.document-list-item strong { font-size: 12px; }
-.document-list-item small { font-size: 10px; color: #8d94a1; font-weight: 500; }
 .document-row-actions { position: absolute; right: 5px; top: 7px; z-index: 12; }
 .document-menu-trigger {
   width: 28px;
@@ -172,28 +170,17 @@
   flex-direction: column;
   overflow: hidden;
 }
-.document-title-row {
-  min-height: 76px;
-  flex: none;
-  padding: 17px 28px;
-  border-bottom: 1px solid #eceef2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-.document-title-row h1 {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: #242936;
-  font: 800 25px/1.2 Inter, system-ui;
-  letter-spacing: -.03em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .document-save-message {
-  flex: none;
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 4;
+  max-width: calc(100% - 32px);
+  padding: 5px 8px;
+  border: 1px solid #e7e8ed;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 3px 12px #252b3914;
   color: #7a8290;
   font-size: 11px;
   font-weight: 650;
@@ -202,6 +189,7 @@
 .document-save-message.failed { color: #c44141; }
 @keyframes document-save-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 .document-editable-shell {
+  position: relative;
   min-width: 0;
   min-height: 0;
   flex: 1;
@@ -255,8 +243,6 @@
   .document-list-row { flex: 0 0 210px; align-self: flex-start; }
   .document-library-empty { padding: 18px; }
   .document-workspace { min-height: 650px; }
-  .document-title-row { min-height: 66px; padding: 14px 17px; }
-  .document-title-row h1 { font-size: 21px; }
   .markdown-body { padding: 25px 24px 40px; }
 }
 
@@ -267,8 +253,6 @@
   .document-library > header > div > span { display: none; }
   .document-library > header h2 { margin: 0; font-size: 18px; }
   .document-workspace { min-height: 620px; }
-  .document-title-row { min-height: 62px; padding: 12px 15px; }
-  .document-title-row h1 { font-size: 19px; }
   .document-save-message { font-size: 10px; }
   .markdown-body { padding: 21px 18px 36px; }
   .document-list-row { flex-basis: 190px; }

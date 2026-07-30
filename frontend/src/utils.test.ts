@@ -1,10 +1,13 @@
 import { describe,expect,it } from "vitest";
-import { dueTone, monthGrid, parseMarkdown, secondsLabel, taskSeconds } from "./utils";
+import { buildTimelineWindow, calendarMarkers, dueTone, localDateKey, monthGrid, parseMarkdown, secondsLabel, taskSeconds, timelinePlacement } from "./utils";
 import type { Task } from "./types";
 
 describe("task utilities",()=>{
   it("formats and totals tracked time",()=>{expect(secondsLabel(3661)).toBe("1:01:01");expect(taskSeconds("a",[{id:"1",taskId:"a",startedAt:"2026-01-01T00:00:00Z",stoppedAt:"2026-01-01T00:01:00Z",durationSeconds:60,note:""}])).toBe(60)});
   it("builds six complete calendar weeks",()=>{const days=monthGrid(new Date(2026,6,1));expect(days).toHaveLength(42);expect(days[0]?.getDay()).toBe(0);expect(days[41]?.getDay()).toBe(6)});
   it("marks overdue open tasks",()=>{const task={status:"todo",dueDate:"2026-01-01"} as Task;expect(dueTone(task,new Date("2026-01-03"))).toBe("overdue")});
+  it("builds an aligned minimum six-week timeline and expands for long projects",()=>{const compact=buildTimelineWindow([],{},{getFullYear:()=>2026,getMonth:()=>6,getDate:()=>30} as Date);expect(compact).toEqual({startKey:"2026-07-27",dayCount:42,weekCount:6});const expanded=buildTimelineWindow([{startDate:"2026-07-02",dueDate:"2026-09-30"}]);expect(expanded.startKey).toBe("2026-06-29");expect(expanded.weekCount).toBeGreaterThan(6);expect(expanded.dayCount).toBe(expanded.weekCount*7)});
+  it("models ranges, milestones, reversed dates, and unscheduled work without NaN positions",()=>{const window=buildTimelineWindow([],{startDate:"2026-07-27",dueDate:"2026-08-31"});expect(timelinePlacement({startDate:"",dueDate:""},window).kind).toBe("unscheduled");const milestone=timelinePlacement({startDate:"",dueDate:"2026-08-03"},window);expect(milestone).toMatchObject({kind:"milestone",marker:"due"});expect(Number.isFinite(milestone.left)).toBe(true);const range=timelinePlacement({startDate:"2026-08-03",dueDate:"2026-08-10"},window);expect(range.kind).toBe("range");expect(range.width).toBeGreaterThan(0);expect(timelinePlacement({startDate:"2026-08-10",dueDate:"2026-08-03"},window).needsReview).toBe(true)});
+  it("emits useful calendar markers and local date keys",()=>{expect(calendarMarkers({startDate:"2026-08-03",dueDate:"2026-08-10"})).toEqual([{date:"2026-08-03",kind:"start"},{date:"2026-08-10",kind:"due"}]);expect(calendarMarkers({startDate:"2026-08-03",dueDate:"2026-08-03"})).toEqual([{date:"2026-08-03",kind:"due"}]);expect(localDateKey(new Date(2026,6,30))).toBe("2026-07-30")});
   it("parses document markdown into safe structural blocks",()=>{expect(parseMarkdown("# Plan\n\nIntro text\ncontinues.\n\n- First\n- Second\n\n```\nconst ready = true;\n```")) .toEqual([{type:"heading",level:1,text:"Plan"},{type:"paragraph",text:"Intro text continues."},{type:"unordered-list",items:["First","Second"]},{type:"code",text:"const ready = true;"}])});
 });
