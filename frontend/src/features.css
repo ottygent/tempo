@@ -451,7 +451,7 @@
   border-radius: var(--r-md);
   background: linear-gradient(145deg, var(--violet-light), var(--violet-dark));
   color: #fff;
-  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.2c);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.2);
   font-size: 11px;
   font-weight: 800;
 }
@@ -602,10 +602,11 @@
   .project-title { flex: 1; }
 
   .action-dock {
-    right: 0;
-    bottom: calc(8px + env(safe-area-inset-bottom));
-    left: 0;
+    position: static;
+    order: 3;
+    flex: none;
     max-width: calc(100vw - 16px);
+    margin: 8px auto calc(8px + env(safe-area-inset-bottom));
     padding: 6px;
     border-radius: 18px;
   }
@@ -688,4 +689,6 @@
     height: auto;
     min-height: calc(100vh - var(--topbar-height) - var(--dock-clearance));
   }
+
+  .main > .documents-view { min-height: 0; }
 }

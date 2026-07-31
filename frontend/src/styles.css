@@ -3,6 +3,22 @@
    Design tokens, global reset, layout shell, and component styles.
    ========================================================================== */
 
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/outfit-latin.woff2") format("woff2");
+}
+
 /* --------------------------------------------------------------------------
    1. Design tokens
    -------------------------------------------------------------------------- */
@@ -11,8 +27,8 @@
   /* Color palette - Premium Dark Mode */
   --ink:          #f0f2f5;
   --ink-secondary:#94a3b8;
-  --muted:        #64748b;
-  --subtle:       #475569;
+  --muted:        #94a3b8;
+  --subtle:       #8492a6;
   --edge:         #1e293b;
   --edge-subtle:  #334155;
   --surface:      #0f172a;
@@ -81,7 +97,7 @@
   --ink:          #0f172a;
   --ink-secondary:#334155;
   --muted:        #64748b;
-  --subtle:       #94a3b8;
+  --subtle:       #64748b;
   --edge:         #e2e8f0;
   --edge-subtle:  #f1f5f9;
   --surface:      #f8fafc;
@@ -2174,15 +2190,24 @@ a:hover { text-decoration: underline; }
     backdrop-filter: blur(2px);
   }
 
-  .main { margin-left: 0; }
+  .main {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 100dvh;
+    margin-left: 0;
+    overflow: hidden;
+  }
 
   .menu { display: block; }
 
-  .topbar { height: 58px; padding: 0 14px; gap: 8px; }
+  .topbar { order: 0; flex: 0 0 58px; height: 58px; padding: 0 14px; gap: 8px; }
 
   .project-title { font-size: 16px; }
 
   .icon-button { display: none; }
+
+  .theme-toggle { display: grid; }
 
   .top-actions { gap: 5px; }
 
@@ -2192,9 +2217,28 @@ a:hover { text-decoration: underline; }
   .timeline-view,
   .calendar-view,
   .time-view,
-  .board-wrap { padding: 20px 14px 112px; }
+  .board-wrap { padding: 20px 14px; }
 
-  .metric-grid { grid-template-columns: 1fr; }
+  .main > .view-stack,
+  .main > .timeline-view,
+  .main > .calendar-view,
+  .main > .time-view,
+  .main > .board-wrap,
+  .main > .documents-view,
+  .main > .loading {
+    order: 2;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .main > .error-banner { order: 1; flex: none; }
+
+  .metric-grid { grid-template-columns: 1fr; gap: 8px; }
+
+  .metric { padding: 12px 16px 10px; }
+
+  .metric > strong { margin-top: 4px; font-size: 24px; }
 
   .overview-grid { grid-template-columns: 1fr; }
 
