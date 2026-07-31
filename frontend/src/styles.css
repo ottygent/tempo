@@ -6,38 +6,39 @@
 /* --------------------------------------------------------------------------
    1. Design tokens
    -------------------------------------------------------------------------- */
-:root {
-  /* Color palette */
-  --ink:          #15202e;
-  --ink-secondary:#455063;
-  --muted:        #6b7585;
-  --subtle:       #9299a8;
-  --edge:         #e4e7ec;
-  --edge-subtle:  #eef0f4;
-  --surface:      #f5f6f9;
-  --paper:        #ffffff;
+:root,
+:root[data-theme="dark"] {
+  /* Color palette - Premium Dark Mode */
+  --ink:          #f0f2f5;
+  --ink-secondary:#94a3b8;
+  --muted:        #64748b;
+  --subtle:       #475569;
+  --edge:         #1e293b;
+  --edge-subtle:  #334155;
+  --surface:      #0f172a;
+  --paper:        #1e293b;
 
-  /* Brand / accent */
-  --violet:       #6c52e3;
-  --violet-dark:  #5541c4;
-  --violet-light: #8b74f0;
-  --violet-alpha: #6c52e31a;
-  --violet-bg:    #f3f0ff;
-  --violet-bg2:   #ede9ff;
+  /* Brand / accent - Vibrant Neon Violet */
+  --violet:       #a78bfa;
+  --violet-dark:  #8b5cf6;
+  --violet-light: #c4b5fd;
+  --violet-alpha: rgba(167, 139, 250, 0.15);
+  --violet-bg:    #2e1065;
+  --violet-bg2:   #4c1d95;
 
   /* Status colors */
-  --mint:         #18a87c;
-  --amber:        #d98b2a;
-  --danger:       #c93c3c;
-  --danger-light: #fff0ee;
-  --danger-edge:  #ffd5d0;
+  --mint:         #10b981;
+  --amber:        #f59e0b;
+  --danger:       #ef4444;
+  --danger-light: #7f1d1d;
+  --danger-edge:  #991b1b;
 
   /* Sidebar */
-  --sidebar-bg:   #1a2030;
-  --sidebar-w:    248px;
+  --sidebar-bg:   #020617;
+  --sidebar-w:    260px;
 
   /* Typography */
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-synthesis: none;
   color: var(--ink);
@@ -54,25 +55,62 @@
   --space-10: 40px;
 
   /* Radius */
-  --r-sm:   6px;
-  --r-md:   10px;
-  --r-lg:   14px;
-  --r-xl:   18px;
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-xl:   24px;
   --r-full: 9999px;
 
-  /* Elevation */
-  --shadow-xs: 0 1px 3px #1a20300d, 0 1px 2px #1a203008;
-  --shadow-sm: 0 2px 6px #1a20301a, 0 1px 3px #1a203010;
-  --shadow-md: 0 6px 16px #1a20301f, 0 2px 6px #1a203014;
-  --shadow-lg: 0 16px 38px #1a20302b, 0 4px 12px #1a203016;
-  --shadow-xl: 0 28px 60px #0d152036, 0 8px 20px #1a203020;
+  /* Elevation (Dark mode shadows) */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.6), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.6), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.7), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
 
   /* Transitions */
   --ease: cubic-bezier(.25, .46, .45, .94);
-  --ease-bounce: cubic-bezier(.34, 1.56, .64, 1);
-  --dur-fast: 120ms;
-  --dur-base: 180ms;
-  --dur-slow: 280ms;
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 400ms;
+}
+
+:root[data-theme="light"] {
+  /* Color palette - Refined Light Mode */
+  --ink:          #0f172a;
+  --ink-secondary:#334155;
+  --muted:        #64748b;
+  --subtle:       #94a3b8;
+  --edge:         #e2e8f0;
+  --edge-subtle:  #f1f5f9;
+  --surface:      #f8fafc;
+  --paper:        #ffffff;
+
+  /* Brand / accent - Rich Violet */
+  --violet:       #6d28d9;
+  --violet-dark:  #5b21b6;
+  --violet-light: #7c3aed;
+  --violet-alpha: rgba(109, 40, 217, 0.12);
+  --violet-bg:    #f5f3ff;
+  --violet-bg2:   #ede9fe;
+
+  /* Status colors */
+  --mint:         #059669;
+  --amber:        #d97706;
+  --danger:       #dc2626;
+  --danger-light: #fef2f2;
+  --danger-edge:  #fecaca;
+
+  /* Sidebar */
+  --sidebar-bg:   #0f172a;
+
+  /* Elevation (Light mode shadows) */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
 }
 
 /* --------------------------------------------------------------------------
@@ -151,14 +189,15 @@ a:hover { text-decoration: underline; }
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(145deg, #9479f5, #6040da);
+  background: linear-gradient(135deg, var(--violet-light), var(--violet-dark));
   display: grid;
   place-items: center;
   color: #fff;
+  font-family: 'Outfit', sans-serif;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -1px;
-  box-shadow: 0 6px 18px #6040da55;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.4);
   flex-shrink: 0;
 }
 
@@ -638,34 +677,36 @@ a:hover { text-decoration: underline; }
   color: var(--muted);
   display: grid;
   place-items: center;
-  transition: background var(--dur-fast), border-color var(--dur-fast);
+  transition: all var(--dur-fast) var(--ease);
 }
 
 .icon-button:hover {
   background: var(--surface);
-  border-color: #cdd2da;
+  border-color: var(--violet);
+  color: var(--violet);
+  transform: scale(1.05);
 }
 
 /* Primary / Secondary buttons */
 .primary {
-  background: var(--violet);
+  background: linear-gradient(135deg, var(--violet), var(--violet-dark));
   color: #fff;
   border: 0;
   border-radius: var(--r-md);
   padding: 8px 16px;
   font-weight: 650;
   font-size: 12px;
-  box-shadow: 0 3px 10px #6c52e330;
-  transition: background var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+  transition: all var(--dur-base) var(--ease-bounce);
 }
 
 .primary:hover {
-  background: var(--violet-dark);
-  box-shadow: 0 4px 14px #6c52e344;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, var(--violet-light), var(--violet));
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px) scale(1.02);
 }
 
-.primary:active { transform: translateY(0); }
+.primary:active { transform: translateY(1px) scale(0.98); }
 
 .primary:disabled {
   opacity: .5;
@@ -682,12 +723,15 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-secondary);
-  transition: background var(--dur-fast), border-color var(--dur-fast);
+  transition: all var(--dur-base) var(--ease);
 }
 
 .secondary:hover {
   background: var(--surface);
-  border-color: #cdd2da;
+  border-color: var(--violet-alpha);
+  color: var(--violet);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Hamburger menu (mobile only) */
@@ -723,7 +767,8 @@ a:hover { text-decoration: underline; }
 }
 
 .project-header h1 {
-  font-size: 26px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 28px;
   font-weight: 800;
   margin: 4px 0 5px;
   letter-spacing: -.65px;
@@ -1086,9 +1131,9 @@ a:hover { text-decoration: underline; }
 }
 
 .task-card:hover {
-  border-color: #cac3f5;
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-2px);
+  border-color: var(--violet);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4), 0 4px 8px rgba(139, 92, 246, 0.15);
+  transform: translateY(-4px) scale(1.02);
 }
 
 .task-card.dragging {
@@ -1167,8 +1212,9 @@ a:hover { text-decoration: underline; }
 .pill.low    { background: #eaf9f2; color: #208460; }
 
 .task-card h3 {
-  font-size: 12px;
-  font-weight: 650;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
   margin: 9px 0 4px;
   letter-spacing: -.15px;
   color: var(--ink);
@@ -1264,7 +1310,7 @@ a:hover { text-decoration: underline; }
   top: 0;
   z-index: 4;
   min-height: 50px;
-  background: #f9fafb;
+  background: var(--surface);
 }
 
 .timeline-head > div {
@@ -1273,7 +1319,7 @@ a:hover { text-decoration: underline; }
   z-index: 5;
   padding: 14px 18px;
   border-right: 1px solid var(--edge);
-  background: #f9fafb;
+  background: var(--surface);
   color: var(--muted);
   font-size: 9px;
   font-weight: 800;
@@ -1499,7 +1545,7 @@ a:hover { text-decoration: underline; }
   text-transform: uppercase;
   letter-spacing: .5px;
   color: var(--muted);
-  background: #f9fafb;
+  background: var(--surface);
 }
 
 .day {
@@ -1609,16 +1655,16 @@ a:hover { text-decoration: underline; }
    14. Time tracking
    -------------------------------------------------------------------------- */
 .timer-hero {
-  background: linear-gradient(135deg, #1e2736, #192030);
-  border: 1px solid rgba(255,255,255,.06);
+  background: linear-gradient(135deg, var(--paper), var(--surface));
+  border: 1px solid var(--edge);
   border-radius: var(--r-xl);
   padding: 24px 28px;
-  color: #fff;
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: 24px;
   margin-bottom: 16px;
-  box-shadow: 0 12px 32px #11192830;
+  box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
 }
@@ -1627,7 +1673,7 @@ a:hover { text-decoration: underline; }
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 80% 50%, #7157e818, transparent 60%);
+  background: radial-gradient(ellipse at 80% 50%, var(--violet-alpha), transparent 60%);
   pointer-events: none;
 }
 

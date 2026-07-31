@@ -11,10 +11,12 @@ const icons:Record<View,string>={overview:"⌂",board:"▦",docs:"▤",timeline:
 const characterCount=(value:string)=>[...value].length;
 
 export default function App(){
+  const [theme,setTheme]=createSignal<"dark"|"light">((localStorage.getItem("tempo_theme") as "dark"|"light")||"dark");
   const [state,setState]=createSignal<AppState>(empty),[selectedWorkspace,setSelectedWorkspace]=createSignal(""),[selectedProject,setSelectedProject]=createSignal(""),[view,setView]=createSignal<View>("overview"),[documentCreateRequest,setDocumentCreateRequest]=createSignal(0);
   const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[profileOpen,setProfileOpen]=createSignal(false),[settingsOpen,setSettingsOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[now,setNow]=createSignal(Date.now());
   const [authenticated,setAuthenticated]=createSignal(false),[authReady,setAuthReady]=createSignal(false),[username,setUsername]=createSignal(""),[email,setEmail]=createSignal("");
   let workspaceMenu!:HTMLDivElement;
+  createEffect(()=>{const currentTheme=theme();document.documentElement.setAttribute("data-theme",currentTheme);localStorage.setItem("tempo_theme",currentTheme)});
   const handleError=(e:unknown,fallback:string)=>{if(e instanceof ApiError&&e.status===401){setAuthenticated(false);setState(empty);return}setError(e instanceof Error?e.message:fallback)};
   const refresh=async()=>{try{const next=await api.state();setState(next);const workspaceId=next.workspaces.some(w=>w.id===selectedWorkspace())?selectedWorkspace():(next.workspaces[0]?.id??"");setSelectedWorkspace(workspaceId);const available=next.projects.filter(p=>p.workspaceId===workspaceId&&p.status!=="archived");if(!available.some(p=>p.id===selectedProject()))setSelectedProject(available[0]?.id??"");setError("")}catch(e){handleError(e,"Unable to load Tempo")}finally{setLoading(false)}};
   const bootstrap=async()=>{try{const session=await api.session();setAuthenticated(session.authenticated);setUsername(session.username??"");setEmail(session.email??"");if(session.authenticated)await refresh();else setLoading(false)}catch(e){handleError(e,"Unable to check your session");setLoading(false)}finally{setAuthReady(true)}};
@@ -74,6 +76,9 @@ export default function App(){
         <button class="menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}>☰</button>
         <strong class="project-title">{project()?.name??"Projects"}</strong>
         <div class="top-actions">
+          <button class="icon-button theme-toggle" type="button" aria-label={`Switch to ${theme()==="dark"?"light":"dark"} theme`} title={`Switch to ${theme()==="dark"?"light":"dark"} theme`} onClick={()=>setTheme(t=>t==="dark"?"light":"dark")}>
+            {theme()==="dark"?"☀️":"🌙"}
+          </button>
           <button class="header-profile" type="button" aria-label="Open profile and account" aria-haspopup="dialog" aria-expanded={profileOpen()} onClick={()=>setProfileOpen(true)}>
             <span class="header-avatar" aria-hidden="true">{username().slice(0,2).toUpperCase()}</span>
             <span class="header-user-copy"><strong>{username()}</strong><span>Workspace owner</span></span>
