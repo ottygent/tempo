@@ -102,6 +102,7 @@ export default function App(){
         <Show when={actionMenuOpen()}>
           <div class="fab-actions" id="quick-create-actions" role="menu" aria-label="Quick create">
             <button type="button" class="fab-action" role="menuitem" disabled={!project()} onClick={()=>{setTaskOpen(true);setActionMenuOpen(false)}}><span class="fab-label">New task</span><span class="fab-action-icon" aria-hidden="true">✓</span></button>
+            <button type="button" class="fab-action" role="menuitem" disabled={!workspace()} onClick={()=>{setProjectOpen(true);setActionMenuOpen(false)}}><span class="fab-label">New project</span><span class="fab-action-icon" aria-hidden="true">▦</span></button>
             <button type="button" class="fab-action" role="menuitem" disabled={!project()} onClick={()=>{setView("docs");setDocumentCreateRequest(request=>request+1);setActionMenuOpen(false)}}><span class="fab-label">New doc</span><span class="fab-action-icon" aria-hidden="true">▤</span></button>
           </div>
         </Show>
