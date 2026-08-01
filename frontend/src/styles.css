@@ -753,13 +753,22 @@ a:hover { text-decoration: underline; }
 
 /* Hamburger menu (mobile only) */
 .menu {
-  display: none;
+  display: grid;
+  place-items: center;
   background: none;
   border: 0;
   font-size: 21px;
   color: var(--muted);
   padding: 4px;
   border-radius: var(--r-sm);
+  width: 34px;
+  height: 34px;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+
+.menu:hover {
+  background: color-mix(in srgb, var(--violet) 18%, transparent);
+  color: var(--violet);
 }
 
 /* --------------------------------------------------------------------------
@@ -2200,7 +2209,7 @@ a:hover { text-decoration: underline; }
     overflow: hidden;
   }
 
-  .menu { display: block; }
+  .menu { display: grid; }
 
   .topbar { order: 0; flex: 0 0 58px; height: 58px; padding: 0 14px; gap: 8px; }
 
