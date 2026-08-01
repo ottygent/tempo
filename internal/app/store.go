@@ -6,11 +6,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"time"
 )
+
+var errStateNotFound = errors.New("state not found")
+
+type stateBackend interface {
+	Load() (State, error)
+	Save(State) error
+	Check(context.Context) error
+	Close(context.Context) error
+	Name() string
+}
+
+type initialStateLoader func() (State, error)
 
 type Store struct {
 	mu      sync.RWMutex
@@ -18,19 +29,18 @@ type Store struct {
 	data    State
 }
 
-func NewStore(path string) (*Store, error) {
-	return newStore(newFileStateBackend(path), nil)
-}
-
-func newStore(backend stateBackend, initial *State) (*Store, error) {
+func newStore(backend stateBackend, loadInitial initialStateLoader) (*Store, error) {
 	s := &Store{backend: backend}
 	state, err := backend.Load()
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !errors.Is(err, errStateNotFound) {
 			return nil, err
 		}
-		if initial != nil {
-			s.data = *initial
+		if loadInitial != nil {
+			s.data, err = loadInitial()
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			s.data = seedState()
 		}

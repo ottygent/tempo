@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -15,11 +14,7 @@ import (
 const testPassword = "correct-horse-battery-staple"
 
 func TestStorePersistsTaskAndTimer(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tempo.json")
-	store, err := NewStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, backend := newMemoryStore(t)
 	state := store.Snapshot()
 	task, err := store.AddTask(Task{ProjectID: state.Projects[0].ID, Title: "Ship test", Status: "todo"})
 	if err != nil {
@@ -31,7 +26,7 @@ func TestStorePersistsTaskAndTimer(t *testing.T) {
 	if _, err = store.StopTimer(); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := NewStore(path)
+	reloaded, err := newStore(backend, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +37,7 @@ func TestStorePersistsTaskAndTimer(t *testing.T) {
 }
 
 func TestDocumentLifecycleAndProjectCascade(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tempo.json")
-	store, err := NewStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, backend := newMemoryStore(t)
 	projectID := store.Snapshot().Projects[0].ID
 	document, err := store.AddDocument(Document{ProjectID: projectID, Title: "  Launch brief  ", Content: "# Draft"})
 	if err != nil {
@@ -65,7 +56,7 @@ func TestDocumentLifecycleAndProjectCascade(t *testing.T) {
 	if _, err := store.UpdateDocument(document.ID, map[string]any{"title": " "}); err == nil {
 		t.Fatal("blank title accepted")
 	}
-	reloaded, err := NewStore(path)
+	reloaded, err := newStore(backend, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +72,7 @@ func TestDocumentLifecycleAndProjectCascade(t *testing.T) {
 }
 
 func TestProjectArchiveAndDeleteCascade(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tempo.json")
-	store, err := NewStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, backend := newMemoryStore(t)
 	initial := store.Snapshot()
 	project := initial.Projects[0]
 	archived, err := store.UpdateProject(project.ID, map[string]any{"status": "archived"})
@@ -117,7 +104,7 @@ func TestProjectArchiveAndDeleteCascade(t *testing.T) {
 			t.Fatalf("deleted project's time entry remains: %+v", entry)
 		}
 	}
-	reloaded, err := NewStore(path)
+	reloaded, err := newStore(backend, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +114,7 @@ func TestProjectArchiveAndDeleteCascade(t *testing.T) {
 }
 
 func TestAuthenticatedAPIWorkflow(t *testing.T) {
-	server, authPath := newTestServer(t)
+	server, authRepository := newTestServer(t)
 
 	unauthorized := request(server, http.MethodGet, "/api/state", "", nil, "")
 	if unauthorized.Code != http.StatusUnauthorized {
@@ -204,25 +191,15 @@ func TestAuthenticatedAPIWorkflow(t *testing.T) {
 		t.Fatalf("logout did not clear cookie: status=%d cookies=%+v", logout.Code, logout.Result().Cookies())
 	}
 
-	info, err := os.Stat(authPath)
-	if err != nil {
-		t.Fatalf("stat auth file: %v", err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("auth file permissions=%v", info.Mode().Perm())
+	persisted := authRepository.snapshot()
+	if persisted.Revision != 1 || persisted.Credentials.Password.Algorithm != passwordAlgorithmArgon2id {
+		t.Fatalf("auth was not persisted securely: revision=%d algorithm=%q", persisted.Revision, persisted.Credentials.Password.Algorithm)
 	}
 }
 
 func TestSecureCookieAndHSTS(t *testing.T) {
-	dir := t.TempDir()
-	store, err := NewStore(filepath.Join(dir, "tempo.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	auth, err := NewAuth(filepath.Join(dir, "auth.json"), "admin", testPassword, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, _ := newMemoryStore(t)
+	auth := newMemoryAuth(t, &memoryAuthRepository{}, "admin", testPassword, true)
 	server := NewServer(store, nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), auth)
 	health := request(server, http.MethodGet, "/api/health", "", nil, "")
 	if health.Header().Get("Strict-Transport-Security") == "" {
@@ -272,19 +249,12 @@ func TestLoginRateLimitAndOriginProtection(t *testing.T) {
 	}
 }
 
-func newTestServer(t *testing.T) (http.Handler, string) {
+func newTestServer(t *testing.T) (http.Handler, *memoryAuthRepository) {
 	t.Helper()
-	dir := t.TempDir()
-	store, err := NewStore(filepath.Join(dir, "tempo.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	authPath := filepath.Join(dir, "auth.json")
-	auth, err := NewAuth(authPath, "admin", testPassword, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return NewServer(store, nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), auth), authPath
+	store, _ := newMemoryStore(t)
+	repository := &memoryAuthRepository{}
+	auth := newMemoryAuth(t, repository, "admin", testPassword, false)
+	return NewServer(store, nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), auth), repository
 }
 
 func request(handler http.Handler, method, path, body string, cookie *http.Cookie, csrf string) *httptest.ResponseRecorder {

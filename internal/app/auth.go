@@ -1,23 +1,23 @@
 package app
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/crypto/argon2"
 )
 
 const (
@@ -25,16 +25,44 @@ const (
 	sessionTTL    = 8 * time.Hour
 	loginWindow   = 15 * time.Minute
 	maxAttempts   = 5
-	pbkdfRounds   = 210_000
+
+	passwordAlgorithmPBKDF2   = "pbkdf2-sha256"
+	passwordAlgorithmArgon2id = "argon2id"
+	pbkdfRounds               = 210_000
+	maxPBKDFRounds            = 2_000_000
+	argon2Time                = 3
+	argon2Memory              = 64 * 1024
+	argon2Threads             = 2
+	passwordHashLength        = 32
 )
 
-type authFile struct {
-	Username        string `json:"username"`
-	Email           string `json:"email,omitempty"`
-	Salt            string `json:"salt"`
-	PasswordHash    string `json:"passwordHash"`
-	SessionSecret   string `json:"sessionSecret"`
-	PBKDFIterations int    `json:"pbkdfIterations"`
+type passwordDigest struct {
+	Algorithm       string
+	Salt            []byte
+	Hash            []byte
+	PBKDFIterations int
+	Argon2Time      uint32
+	Argon2Memory    uint32
+	Argon2Threads   uint8
+}
+
+type authCredentials struct {
+	Username      string
+	Email         string
+	Password      passwordDigest
+	SessionSecret []byte
+}
+
+type authRecord struct {
+	Credentials authCredentials
+	Revision    int64
+}
+
+type authRepository interface {
+	LoadAuth() (authRecord, error)
+	InitializeAuth(authCredentials) (authRecord, error)
+	UpdateAuth(expectedRevision int64, next authCredentials) (authRecord, error)
+	Name() string
 }
 
 type loginAttempts struct {
@@ -49,116 +77,184 @@ type Session struct {
 }
 
 type Auth struct {
-	path          string
-	username      string
-	email         string
-	salt          []byte
-	hash          []byte
-	secret        []byte
-	rounds        int
+	repository    authRepository
+	credentials   authCredentials
+	revision      int64
 	secure        bool
 	credentialsMu sync.RWMutex
+	passwordMu    sync.Mutex
 	attemptsMu    sync.Mutex
 	attempts      map[string]loginAttempts
 }
 
-var errInvalidCurrentPassword = errors.New("invalid current password")
+var (
+	ErrAuthBootstrapRequired  = errors.New("MongoDB auth bootstrap is required")
+	errAuthNotFound           = errors.New("auth record not found")
+	errAuthConflict           = errors.New("auth record changed concurrently")
+	errInvalidCurrentPassword = errors.New("invalid current password")
+)
 
-func NewAuth(path, username, password string, secure bool) (*Auth, error) {
-	var config authFile
-	body, err := os.ReadFile(path)
-	if err == nil {
-		if err := json.Unmarshal(body, &config); err != nil {
-			return nil, fmt.Errorf("parse auth file: %w", err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read auth file: %w", err)
-	} else {
-		username = strings.TrimSpace(username)
-		if username == "" {
-			username = "admin"
-		}
-		if utf8.RuneCountInString(password) < 12 {
-			return nil, errors.New("TEMPO_ADMIN_PASSWORD must contain at least 12 characters on first run")
-		}
-		salt, err := randomBytes(16)
-		if err != nil {
-			return nil, err
-		}
-		secret, err := randomBytes(32)
-		if err != nil {
-			return nil, err
-		}
-		config = authFile{Username: username, Salt: hex.EncodeToString(salt), PasswordHash: hex.EncodeToString(derivePassword(password, salt, pbkdfRounds)), SessionSecret: hex.EncodeToString(secret), PBKDFIterations: pbkdfRounds}
-		if err := saveAuthFile(path, config); err != nil {
-			return nil, err
-		}
+func NewAuthForStore(store *Store, legacyPath, username, password string, secure bool) (*Auth, error) {
+	repository, ok := store.backend.(authRepository)
+	if !ok {
+		return nil, errors.New("MongoDB auth storage is required")
 	}
-	if config.PBKDFIterations < 100_000 {
-		return nil, errors.New("auth file uses an unsafe password iteration count")
+	return newAuth(repository, legacyPath, username, password, secure)
+}
+
+func newAuth(repository authRepository, legacyPath, username, password string, secure bool) (*Auth, error) {
+	record, err := repository.LoadAuth()
+	if errors.Is(err, errAuthNotFound) {
+		credentials, imported, loadErr := credentialsForInitialization(legacyPath, username, password)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		if imported {
+			// Rotating the signing key makes any retained legacy JSON copy unable
+			// to forge sessions after its password verifier has been migrated.
+			credentials.SessionSecret, loadErr = randomBytes(32)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+		}
+		record, err = repository.InitializeAuth(credentials)
 	}
-	salt, err := hex.DecodeString(config.Salt)
 	if err != nil {
-		return nil, errors.New("invalid auth salt")
+		return nil, fmt.Errorf("load MongoDB auth: %w", err)
 	}
-	hash, err := hex.DecodeString(config.PasswordHash)
-	if err != nil {
-		return nil, errors.New("invalid password hash")
-	}
-	secret, err := hex.DecodeString(config.SessionSecret)
-	if err != nil || len(secret) < 32 {
-		return nil, errors.New("invalid session secret")
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return nil, fmt.Errorf("secure auth file: %w", err)
+	if err := validateAuthRecord(record); err != nil {
+		return nil, fmt.Errorf("invalid MongoDB auth: %w", err)
 	}
 	return &Auth{
-		path:     path,
-		username: config.Username,
-		email:    config.Email,
-		salt:     salt,
-		hash:     hash,
-		secret:   secret,
-		rounds:   config.PBKDFIterations,
-		secure:   secure,
-		attempts: make(map[string]loginAttempts),
+		repository:  repository,
+		credentials: cloneAuthCredentials(record.Credentials),
+		revision:    record.Revision,
+		secure:      secure,
+		attempts:    make(map[string]loginAttempts),
 	}, nil
 }
 
-func saveAuthFile(path string, config authFile) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create auth directory: %w", err)
+func credentialsForInitialization(legacyPath, username, password string) (authCredentials, bool, error) {
+	if legacyPath != "" {
+		credentials, err := loadLegacyAuthFile(legacyPath)
+		if err != nil {
+			return authCredentials{}, false, fmt.Errorf("load legacy auth: %w", err)
+		}
+		if err := validateAuthCredentials(credentials); err != nil {
+			return authCredentials{}, false, fmt.Errorf("validate legacy auth: %w", err)
+		}
+		return credentials, true, nil
 	}
-	body, err := json.MarshalIndent(config, "", "  ")
+	credentials, err := newAuthCredentials(username, password)
+	return credentials, false, err
+}
+
+func newAuthCredentials(username, password string) (authCredentials, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		username = "admin"
+	}
+	if utf8.RuneCountInString(password) < 12 {
+		return authCredentials{}, fmt.Errorf("%w: TEMPO_ADMIN_PASSWORD must contain at least 12 characters", ErrAuthBootstrapRequired)
+	}
+	digest, err := newPasswordDigest(password)
 	if err != nil {
-		return err
+		return authCredentials{}, err
 	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	secret, err := randomBytes(32)
 	if err != nil {
-		return fmt.Errorf("create temporary auth file: %w", err)
+		return authCredentials{}, err
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("secure temporary auth file: %w", err)
+	credentials := authCredentials{Username: username, Password: digest, SessionSecret: secret}
+	if err := validateAuthCredentials(credentials); err != nil {
+		return authCredentials{}, err
 	}
-	if _, err := tmp.Write(body); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write auth file: %w", err)
+	return credentials, nil
+}
+
+func newPasswordDigest(password string) (passwordDigest, error) {
+	salt, err := randomBytes(16)
+	if err != nil {
+		return passwordDigest{}, err
 	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close auth file: %w", err)
+	return passwordDigest{
+		Algorithm:     passwordAlgorithmArgon2id,
+		Salt:          salt,
+		Hash:          argon2.IDKey([]byte(password), salt, argon2Time, argon2Memory, argon2Threads, passwordHashLength),
+		Argon2Time:    argon2Time,
+		Argon2Memory:  argon2Memory,
+		Argon2Threads: argon2Threads,
+	}, nil
+}
+
+func validateAuthRecord(record authRecord) error {
+	if record.Revision < 1 {
+		return errors.New("invalid auth revision")
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("replace auth file: %w", err)
+	return validateAuthCredentials(record.Credentials)
+}
+
+func validateAuthCredentials(credentials authCredentials) error {
+	if credentials.Username == "" || strings.TrimSpace(credentials.Username) != credentials.Username || !utf8.ValidString(credentials.Username) || utf8.RuneCountInString(credentials.Username) > 100 {
+		return errors.New("invalid auth username")
+	}
+	if !utf8.ValidString(credentials.Email) || utf8.RuneCountInString(credentials.Email) > 254 {
+		return errors.New("invalid auth email")
+	}
+	if len(credentials.Password.Salt) != 16 || len(credentials.Password.Hash) != passwordHashLength {
+		return errors.New("invalid password verifier")
+	}
+	switch credentials.Password.Algorithm {
+	case passwordAlgorithmPBKDF2:
+		if credentials.Password.PBKDFIterations < 100_000 || credentials.Password.PBKDFIterations > maxPBKDFRounds {
+			return errors.New("unsafe PBKDF2 iteration count")
+		}
+	case passwordAlgorithmArgon2id:
+		if credentials.Password.Argon2Time < 1 || credentials.Password.Argon2Time > 10 ||
+			credentials.Password.Argon2Memory < 32*1024 || credentials.Password.Argon2Memory > 256*1024 ||
+			credentials.Password.Argon2Threads < 1 || credentials.Password.Argon2Threads > 16 {
+			return errors.New("unsafe Argon2id parameters")
+		}
+	default:
+		return errors.New("unsupported password algorithm")
+	}
+	if len(credentials.SessionSecret) < 32 || len(credentials.SessionSecret) > 64 {
+		return errors.New("invalid session secret")
 	}
 	return nil
 }
 
-func derivePassword(password string, salt []byte, rounds int) []byte {
-	// PBKDF2-HMAC-SHA256 implemented with the standard library to keep Tempo dependency-free.
+func cloneAuthCredentials(credentials authCredentials) authCredentials {
+	credentials.Password.Salt = append([]byte(nil), credentials.Password.Salt...)
+	credentials.Password.Hash = append([]byte(nil), credentials.Password.Hash...)
+	credentials.SessionSecret = append([]byte(nil), credentials.SessionSecret...)
+	return credentials
+}
+
+func sameAuthCredentials(left, right authCredentials) bool {
+	return left.Username == right.Username && left.Email == right.Email &&
+		left.Password.Algorithm == right.Password.Algorithm &&
+		left.Password.PBKDFIterations == right.Password.PBKDFIterations &&
+		left.Password.Argon2Time == right.Password.Argon2Time &&
+		left.Password.Argon2Memory == right.Password.Argon2Memory &&
+		left.Password.Argon2Threads == right.Password.Argon2Threads &&
+		bytes.Equal(left.Password.Salt, right.Password.Salt) &&
+		bytes.Equal(left.Password.Hash, right.Password.Hash) &&
+		bytes.Equal(left.SessionSecret, right.SessionSecret)
+}
+
+func derivePassword(password string, digest passwordDigest) []byte {
+	switch digest.Algorithm {
+	case passwordAlgorithmArgon2id:
+		return argon2.IDKey([]byte(password), digest.Salt, digest.Argon2Time, digest.Argon2Memory, digest.Argon2Threads, uint32(len(digest.Hash)))
+	case passwordAlgorithmPBKDF2:
+		return derivePBKDF2(password, digest.Salt, digest.PBKDFIterations)
+	default:
+		return make([]byte, len(digest.Hash))
+	}
+}
+
+func derivePBKDF2(password string, salt []byte, rounds int) []byte {
 	mac := hmac.New(sha256.New, []byte(password))
 	mac.Write(salt)
 	mac.Write([]byte{0, 0, 0, 1})
@@ -183,16 +279,20 @@ func randomBytes(size int) ([]byte, error) {
 	return value, nil
 }
 
+func (a *Auth) StorageName() string { return a.repository.Name() }
+
 func (a *Auth) CheckCredentials(username, password string) bool {
 	a.credentialsMu.RLock()
 	defer a.credentialsMu.RUnlock()
-	return a.checkCredentialsLocked(username, password)
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
+	return checkCredentials(a.credentials, username, password)
 }
 
-func (a *Auth) checkCredentialsLocked(username, password string) bool {
-	candidate := derivePassword(password, a.salt, a.rounds)
-	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(a.username))
-	hashOK := subtle.ConstantTimeCompare(candidate, a.hash)
+func checkCredentials(credentials authCredentials, username, password string) bool {
+	candidate := derivePassword(password, credentials.Password)
+	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(credentials.Username))
+	hashOK := subtle.ConstantTimeCompare(candidate, credentials.Password.Hash)
 	return userOK&hashOK == 1
 }
 
@@ -203,7 +303,7 @@ func (a *Auth) Issue(w http.ResponseWriter) (Session, string, error) {
 	}
 	a.credentialsMu.RLock()
 	defer a.credentialsMu.RUnlock()
-	session, csrf, cookieValue, err := makeSession(a.username, a.secret, nonceBytes)
+	session, csrf, cookieValue, err := makeSession(a.credentials.Username, a.credentials.SessionSecret, nonceBytes)
 	if err != nil {
 		return Session{}, "", err
 	}
@@ -218,15 +318,17 @@ func (a *Auth) AuthenticateAndIssue(w http.ResponseWriter, username, password st
 	}
 	a.credentialsMu.RLock()
 	defer a.credentialsMu.RUnlock()
-	if !a.checkCredentialsLocked(username, password) {
+	a.passwordMu.Lock()
+	defer a.passwordMu.Unlock()
+	if !checkCredentials(a.credentials, username, password) {
 		return Session{}, "", "", false, nil
 	}
-	session, csrf, cookieValue, err := makeSession(a.username, a.secret, nonceBytes)
+	session, csrf, cookieValue, err := makeSession(a.credentials.Username, a.credentials.SessionSecret, nonceBytes)
 	if err != nil {
 		return Session{}, "", "", false, err
 	}
 	a.setSessionCookie(w, cookieValue)
-	return session, a.email, csrf, true, nil
+	return session, a.credentials.Email, csrf, true, nil
 }
 
 func makeSession(username string, secret, nonceBytes []byte) (Session, string, string, error) {
@@ -272,26 +374,24 @@ func (a *Auth) SessionDetails(r *http.Request) (Session, string, string, bool) {
 	}
 	a.credentialsMu.RLock()
 	defer a.credentialsMu.RUnlock()
-	if subtle.ConstantTimeCompare([]byte(parts[1]), []byte(signWithSecret(a.secret, parts[0]))) != 1 ||
-		session.Username != a.username ||
-		session.Expires <= time.Now().Unix() ||
-		session.Nonce == "" {
+	if subtle.ConstantTimeCompare([]byte(parts[1]), []byte(signWithSecret(a.credentials.SessionSecret, parts[0]))) != 1 ||
+		session.Username != a.credentials.Username || session.Expires <= time.Now().Unix() || session.Nonce == "" {
 		return Session{}, "", "", false
 	}
-	return session, a.email, csrfWithSecret(a.secret, session), true
+	return session, a.credentials.Email, csrfWithSecret(a.credentials.SessionSecret, session), true
 }
 
 func (a *Auth) VerifyCSRF(session Session, token string) bool {
 	a.credentialsMu.RLock()
 	defer a.credentialsMu.RUnlock()
-	expected := csrfWithSecret(a.secret, session)
+	expected := csrfWithSecret(a.credentials.SessionSecret, session)
 	return token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1
 }
 
 func (a *Auth) csrf(session Session) string {
 	a.credentialsMu.RLock()
 	defer a.credentialsMu.RUnlock()
-	return csrfWithSecret(a.secret, session)
+	return csrfWithSecret(a.credentials.SessionSecret, session)
 }
 
 func csrfWithSecret(secret []byte, session Session) string {
@@ -308,67 +408,59 @@ func (a *Auth) UpdateSettingsAndIssue(w http.ResponseWriter, username, email *st
 	a.credentialsMu.Lock()
 	defer a.credentialsMu.Unlock()
 
-	currentHash := derivePassword(currentPassword, a.salt, a.rounds)
-	if subtle.ConstantTimeCompare(currentHash, a.hash) != 1 {
+	a.passwordMu.Lock()
+	currentHash := derivePassword(currentPassword, a.credentials.Password)
+	a.passwordMu.Unlock()
+	if subtle.ConstantTimeCompare(currentHash, a.credentials.Password.Hash) != 1 {
 		return Session{}, "", "", errInvalidCurrentPassword
 	}
 
-	nextUsername := a.username
+	next := cloneAuthCredentials(a.credentials)
 	if username != nil {
-		nextUsername = *username
+		next.Username = *username
 	}
-	nextEmail := a.email
 	if email != nil {
-		nextEmail = *email
+		next.Email = *email
 	}
-	nextSalt := append([]byte(nil), a.salt...)
-	nextHash := append([]byte(nil), a.hash...)
-	nextSecret := append([]byte(nil), a.secret...)
-
 	passwordChanged := newPassword != nil && *newPassword != ""
 	if passwordChanged {
 		var err error
-		nextSalt, err = randomBytes(16)
+		next.Password, err = newPasswordDigest(*newPassword)
 		if err != nil {
 			return Session{}, "", "", err
 		}
-		nextHash = derivePassword(*newPassword, nextSalt, a.rounds)
 	}
-	if passwordChanged || nextUsername != a.username {
+	if passwordChanged || next.Username != a.credentials.Username {
 		var err error
-		nextSecret, err = randomBytes(32)
+		next.SessionSecret, err = randomBytes(32)
 		if err != nil {
 			return Session{}, "", "", err
 		}
+	}
+	if err := validateAuthCredentials(next); err != nil {
+		return Session{}, "", "", err
 	}
 	nonceBytes, err := randomBytes(18)
 	if err != nil {
 		return Session{}, "", "", err
 	}
-	session, csrf, cookieValue, err := makeSession(nextUsername, nextSecret, nonceBytes)
+	session, csrf, cookieValue, err := makeSession(next.Username, next.SessionSecret, nonceBytes)
 	if err != nil {
 		return Session{}, "", "", err
 	}
 
-	config := authFile{
-		Username:        nextUsername,
-		Email:           nextEmail,
-		Salt:            hex.EncodeToString(nextSalt),
-		PasswordHash:    hex.EncodeToString(nextHash),
-		SessionSecret:   hex.EncodeToString(nextSecret),
-		PBKDFIterations: a.rounds,
-	}
-	if err := saveAuthFile(a.path, config); err != nil {
+	persisted, err := a.repository.UpdateAuth(a.revision, next)
+	if err != nil {
 		return Session{}, "", "", err
 	}
+	if err := validateAuthRecord(persisted); err != nil || !sameAuthCredentials(persisted.Credentials, next) {
+		return Session{}, "", "", errors.New("MongoDB returned an inconsistent auth record")
+	}
 
-	a.username = nextUsername
-	a.email = nextEmail
-	a.salt = nextSalt
-	a.hash = nextHash
-	a.secret = nextSecret
+	a.credentials = cloneAuthCredentials(persisted.Credentials)
+	a.revision = persisted.Revision
 	a.setSessionCookie(w, cookieValue)
-	return session, nextEmail, csrf, nil
+	return session, next.Email, csrf, nil
 }
 
 func clientIP(r *http.Request) string {

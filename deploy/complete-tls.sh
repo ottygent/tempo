@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 if [[ "${EUID}" -ne 0 ]]; then
   exec sudo -n "$0" "$@"
@@ -36,7 +36,22 @@ fi
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-printf 'TEMPO_SECURE_COOKIE=true\n' >"$tmp"
+if [[ ! -f /etc/tempo/tempo.env ]]; then
+  echo "Missing /etc/tempo/tempo.env; refusing to erase the MongoDB configuration."
+  exit 1
+fi
+if ! awk '
+  /^[[:space:]]*TEMPO_SECURE_COOKIE=/ {
+    if (!updated) print "TEMPO_SECURE_COOKIE=true"
+    updated = 1
+    next
+  }
+  { print }
+  END { if (!updated) print "TEMPO_SECURE_COOKIE=true" }
+' /etc/tempo/tempo.env >"$tmp"; then
+  echo "Could not update /etc/tempo/tempo.env."
+  exit 1
+fi
 sudo install -o root -g root -m 0600 "$tmp" /etc/tempo/tempo.env
 sudo apache2ctl configtest >>"$LOG_FILE" 2>&1
 sudo systemctl reload apache2

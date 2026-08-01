@@ -6,11 +6,14 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 DEV_BINARY="$ROOT_DIR/bin/tempo-dev"
 NEXT_BINARY="$ROOT_DIR/bin/.tempo-dev.next"
+PREVIOUS_BINARY="$ROOT_DIR/bin/.tempo-dev.previous"
 ENV_FILE="${TEMPO_ENV_FILE:-$ROOT_DIR/.env}"
 POLL_INTERVAL="${TEMPO_DEV_POLL_INTERVAL:-0.75}"
 
 BACKEND_PID=""
 VITE_PID=""
+BOOTSTRAP_DIR=""
+BOOTSTRAP_PASSWORD_FILE=""
 
 log() {
   printf '[tempo-dev] %s\n' "$*"
@@ -45,6 +48,7 @@ cleanup() {
   trap - EXIT INT TERM
   stop_process "$VITE_PID"
   stop_process "$BACKEND_PID"
+  clear_bootstrap_credentials
   log "Development servers stopped."
   exit "$status"
 }
@@ -73,33 +77,47 @@ load_environment() {
   set -u
 }
 
-absolute_from_root() {
-  local path="$1"
-  if [[ "$path" == /* ]]; then
-    printf '%s\n' "$path"
-  else
-    printf '%s/%s\n' "$ROOT_DIR" "$path"
+clear_bootstrap_credentials() {
+  unset TEMPO_ADMIN_PASSWORD TEMPO_ADMIN_PASSWORD_FILE
+  if [[ -n "$BOOTSTRAP_PASSWORD_FILE" && "$BOOTSTRAP_PASSWORD_FILE" == /tmp/tempo-dev-auth.*/password ]]; then
+    rm -f -- "$BOOTSTRAP_PASSWORD_FILE"
+  fi
+  if [[ -n "$BOOTSTRAP_DIR" && "$BOOTSTRAP_DIR" == /tmp/tempo-dev-auth.* ]]; then
+    rmdir -- "$BOOTSTRAP_DIR" 2>/dev/null || true
+  fi
+  BOOTSTRAP_PASSWORD_FILE=""
+  BOOTSTRAP_DIR=""
+}
+
+store_bootstrap_password() {
+  local password="$1"
+  if [[ -z "$BOOTSTRAP_DIR" ]]; then
+    BOOTSTRAP_DIR="$(mktemp -d /tmp/tempo-dev-auth.XXXXXX)"
+    BOOTSTRAP_PASSWORD_FILE="$BOOTSTRAP_DIR/password"
+  fi
+  (umask 077; printf '%s\n' "$password" >"$BOOTSTRAP_PASSWORD_FILE")
+  chmod 0600 "$BOOTSTRAP_PASSWORD_FILE"
+  unset TEMPO_ADMIN_PASSWORD
+  export TEMPO_ADMIN_PASSWORD_FILE="$BOOTSTRAP_PASSWORD_FILE"
+}
+
+stage_inline_bootstrap_password() {
+  if [[ -n "${TEMPO_ADMIN_PASSWORD:-}" ]]; then
+    store_bootstrap_password "$TEMPO_ADMIN_PASSWORD"
   fi
 }
 
-prepare_authentication() {
-  local auth_path password confirmation
-  auth_path="${TEMPO_AUTH_FILE:-${TEMPO_DATA}.auth.json}"
-  auth_path="$(absolute_from_root "$auth_path")"
+prompt_bootstrap_password() {
+  local password confirmation
+  [[ -t 0 ]] || fail "MongoDB has no Tempo auth record; set TEMPO_ADMIN_PASSWORD or TEMPO_ADMIN_PASSWORD_FILE once"
 
-  if [[ -f "$auth_path" || -n "${TEMPO_ADMIN_PASSWORD:-}" || -n "${TEMPO_ADMIN_PASSWORD_FILE:-}" ]]; then
-    return
-  fi
-
-  [[ -t 0 ]] || fail "first run requires TEMPO_ADMIN_PASSWORD or TEMPO_ADMIN_PASSWORD_FILE"
-
-  read -r -s -p "First-run admin password (at least 12 characters): " password
+  read -r -s -p "First-run Tempo admin password (at least 12 characters): " password
   printf '\n'
   ((${#password} >= 12)) || fail "admin password must contain at least 12 characters"
   read -r -s -p "Confirm admin password: " confirmation
   printf '\n'
   [[ "$password" == "$confirmation" ]] || fail "passwords do not match"
-  export TEMPO_ADMIN_PASSWORD="$password"
+  store_bootstrap_password "$password"
   unset password confirmation
 }
 
@@ -129,12 +147,15 @@ build_backend() {
     cd "$ROOT_DIR"
     CGO_ENABLED=0 go build -trimpath -o "$NEXT_BINARY" .
   ); then
-    mv -f -- "$NEXT_BINARY" "$DEV_BINARY"
     return 0
   fi
 
   log "Go build failed; the current server will keep running."
   return 1
+}
+
+activate_backend() {
+  mv -f -- "$NEXT_BINARY" "$DEV_BINARY"
 }
 
 start_backend() {
@@ -147,24 +168,23 @@ start_backend() {
 }
 
 wait_for_backend() {
-  local expected health attempt
-  expected="json"
-  [[ -n "${TEMPO_MONGO_URI:-}" ]] && expected="mongodb"
+  local health attempt status
 
   for attempt in {1..48}; do
     if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
-      wait "$BACKEND_PID" || true
-      fail "Go server stopped during startup"
+      status=0
+      wait "$BACKEND_PID" || status=$?
+      return "$status"
     fi
     health="$(curl -fsS --max-time 1 http://127.0.0.1:8080/api/health 2>/dev/null || true)"
-    if [[ "$health" == *"\"status\":\"ok\""* && "$health" == *"\"storage\":\"$expected\""* ]]; then
-      log "Go API is healthy (storage: $expected)."
-      return
+    if [[ "$health" == *"\"status\":\"ok\""* && "$health" == *'"storage":"mongodb"'* ]]; then
+      log "Go API is healthy (storage: mongodb)."
+      return 0
     fi
     sleep 0.25
   done
 
-  fail "Go API did not become healthy at http://127.0.0.1:8080/api/health"
+  return 1
 }
 
 start_frontend() {
@@ -210,16 +230,28 @@ watch_backend() {
 
     log "Backend change detected. Rebuilding..."
     if build_backend; then
+      cp -p -- "$DEV_BINARY" "$PREVIOUS_BINARY"
       stop_process "$BACKEND_PID"
+      activate_backend
       start_backend
-      wait_for_backend
-      previous="$(backend_snapshot)"
-      log "Go server reloaded."
+      if wait_for_backend; then
+        rm -f -- "$PREVIOUS_BINARY"
+        previous="$(backend_snapshot)"
+        log "Go server reloaded."
+      else
+        stop_process "$BACKEND_PID"
+        mv -f -- "$PREVIOUS_BINARY" "$DEV_BINARY"
+        start_backend
+        wait_for_backend || fail "reloaded Go server failed and the previous server could not be restored"
+        previous="$(backend_snapshot)"
+        log "Reload failed health checks; restored the previous Go server."
+      fi
     fi
   done
 }
 
 main() {
+  local status
   require_command go
   require_command pnpm
   require_command find
@@ -228,27 +260,34 @@ main() {
   cd "$ROOT_DIR"
   load_environment
 
+  [[ -n "${TEMPO_MONGO_URI:-}" ]] || fail "TEMPO_MONGO_URI is required; add it to .env"
+  stage_inline_bootstrap_password
+
   # Vite's development proxy targets this fixed local address.
   export TEMPO_ADDR="127.0.0.1:8080"
-  export TEMPO_DATA="$(absolute_from_root "${TEMPO_DATA:-data/tempo.json}")"
-  if [[ -n "${TEMPO_AUTH_FILE:-}" ]]; then
-    export TEMPO_AUTH_FILE="$(absolute_from_root "$TEMPO_AUTH_FILE")"
-  fi
 
-  prepare_authentication
-  mkdir -p "$ROOT_DIR/bin" "$(dirname -- "$TEMPO_DATA")"
+  mkdir -p "$ROOT_DIR/bin"
   install_frontend_dependencies
   build_frontend
   build_backend
+  activate_backend
 
-  if [[ -n "${TEMPO_MONGO_URI:-}" ]]; then
-    log "Persistence: MongoDB (${TEMPO_MONGO_DATABASE:-tempo}/${TEMPO_MONGO_COLLECTION:-app_state})"
-  else
-    log "Persistence: JSON ($TEMPO_DATA)"
-  fi
+  log "Persistence: MongoDB (${TEMPO_MONGO_DATABASE:-tempo}; state=${TEMPO_MONGO_COLLECTION:-app_state}; auth=${TEMPO_MONGO_AUTH_COLLECTION:-auth})"
 
   start_backend
-  wait_for_backend
+  if wait_for_backend; then
+    :
+  else
+    status=$?
+    if [[ "$status" -eq 3 && -z "${TEMPO_ADMIN_PASSWORD:-}" && -z "${TEMPO_ADMIN_PASSWORD_FILE:-}" ]]; then
+      prompt_bootstrap_password
+      start_backend
+      wait_for_backend || fail "Go server did not become healthy after MongoDB auth bootstrap"
+    else
+      fail "Go server stopped during startup (exit status $status)"
+    fi
+  fi
+  clear_bootstrap_credentials
   start_frontend
   log "Open http://127.0.0.1:5173 (frontend changes use HMR; Go changes restart the API)."
   watch_backend
