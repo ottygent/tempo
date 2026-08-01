@@ -81,20 +81,22 @@ The build first produces the SolidJS bundle, then embeds `frontend/dist` into th
 
 ## Development
 
-Terminal 1:
+Start the complete development environment with one command:
 
 ```bash
-go run . -addr 127.0.0.1:8080 -data /tmp/tempo-dev.json
+make dev
 ```
 
-Terminal 2:
+The launcher loads the repository's `.env` when present, performs an initial frontend and Go build, starts the Go API on port 8080, verifies its configured storage backend, and starts Vite on port 5173. Open <http://127.0.0.1:5173>. Vite hot-reloads frontend changes, while edits to Go files automatically rebuild and restart the API. Restart the launcher after changing `.env`.
+
+On the first run, the launcher securely prompts for the admin password if neither `TEMPO_ADMIN_PASSWORD` nor `TEMPO_ADMIN_PASSWORD_FILE` is configured. MongoDB is used automatically when `.env` exports `TEMPO_MONGO_URI`; otherwise development data is stored in `data/tempo.json`.
+
+To skip loading `.env`, or to use a different environment file:
 
 ```bash
-cd frontend
-pnpm dev
+TEMPO_LOAD_ENV=false make dev
+TEMPO_ENV_FILE=/path/to/dev.env make dev
 ```
-
-Vite runs at <http://127.0.0.1:5173> and proxies `/api` to Go on port 8080.
 
 ## Quality gates
 

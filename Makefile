@@ -1,6 +1,6 @@
 PNPM ?= pnpm
 
-.PHONY: install test build run clean
+.PHONY: install test build run dev clean
 install:
 	cd frontend && $(PNPM) install --frozen-lockfile
 
@@ -17,6 +17,9 @@ build:
 
 run: build
 	./bin/tempo
+
+dev:
+	./scripts/dev.sh
 
 clean:
 	rm -rf frontend/dist bin
