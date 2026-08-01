@@ -19,7 +19,7 @@ export default function App(){
   };
   const [theme,setTheme]=createSignal<"dark"|"light">((localStorage.getItem("tempo_theme") as "dark"|"light")||"dark");
   const [state,setState]=createSignal<AppState>(empty),[selectedWorkspace,setSelectedWorkspace]=createSignal(""),[selectedProject,setSelectedProject]=createSignal(""),[view,setView]=createSignal<View>("overview"),[documentCreateRequest,setDocumentCreateRequest]=createSignal(0);
-  const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[profileOpen,setProfileOpen]=createSignal(false),[settingsOpen,setSettingsOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[now,setNow]=createSignal(Date.now());
+  const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[profileOpen,setProfileOpen]=createSignal(false),[settingsOpen,setSettingsOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[sidebarCollapsed,setSidebarCollapsed]=createSignal(false),[now,setNow]=createSignal(Date.now());
   const [authenticated,setAuthenticated]=createSignal(false),[authReady,setAuthReady]=createSignal(false),[username,setUsername]=createSignal(""),[email,setEmail]=createSignal("");
   let workspaceMenu!:HTMLDivElement;
   createEffect(()=>{const currentTheme=theme();document.documentElement.setAttribute("data-theme",currentTheme);localStorage.setItem("tempo_theme",currentTheme);syncThemeMeta(currentTheme)});
@@ -49,11 +49,17 @@ export default function App(){
   return <><Show when={authReady()} fallback={<div class="auth-loading"><span/>Securing your workspace…</div>}>
   <Show when={authenticated()} fallback={<Login defaultUsername={username()||"admin"} onLogin={login}/> }><div class="app-shell">
     <Show when={mobileNav()}><button class="scrim" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/></Show>
-    <aside classList={{sidebar:true,open:mobileNav()}}>
+    <aside classList={{sidebar:true,open:mobileNav(),collapsed:sidebarCollapsed()}}>
       <button class="close-nav" aria-label="Close navigation" onClick={()=>setMobileNav(false)}>×</button>
-      <div class="workspace-menu" ref={workspaceMenu}><button class="workspace-switch" aria-label="Select workspace" aria-haspopup="menu" aria-expanded={workspaceMenuOpen()} onClick={()=>setWorkspaceMenuOpen(open=>!open)}><span class="workspace-avatar" style={{background:workspace()?.color??defaultWorkspaceColor}}>{workspace()?.name?.[0]??"D"}</span><span class="workspace-name">{workspace()?.name??"Default workspace"}</span><b classList={{open:workspaceMenuOpen()}}>⌄</b></button><Show when={workspaceMenuOpen()}><div class="workspace-options" role="menu" aria-label="Workspace options"><For each={state().workspaces}>{w=><button role="menuitemradio" aria-checked={workspace()?.id===w.id} classList={{selected:workspace()?.id===w.id}} onClick={()=>{chooseWorkspace(w.id);setWorkspaceMenuOpen(false)}}><span class="workspace-option-avatar" style={{background:w.color}}>{w.name[0]}</span><span>{w.name}</span><b>✓</b></button>}</For><div class="workspace-menu-divider"/><button class="workspace-add" role="menuitem" onClick={()=>{setWorkspaceMenuOpen(false);setWorkspaceOpen(true)}}><span>+</span>Add new workspace</button></div></Show></div>
+      <div class="workspace-menu" ref={workspaceMenu}>
+        <div class="workspace-menu-header">
+          <button class="workspace-switch" aria-label="Select workspace" aria-haspopup="menu" aria-expanded={workspaceMenuOpen()} onClick={()=>setWorkspaceMenuOpen(open=>!open)}><span class="workspace-avatar" style={{background:workspace()?.color??defaultWorkspaceColor}}>{workspace()?.name?.[0]??"D"}</span><span class="workspace-name">{workspace()?.name??"Default workspace"}</span><b classList={{open:workspaceMenuOpen()}}>⌄</b></button>
+          <button class="sidebar-menu-trigger" aria-label={sidebarCollapsed()?"Expand navigation":"Collapse navigation"} aria-expanded={!sidebarCollapsed()} onClick={()=>{setWorkspaceMenuOpen(false);setSidebarCollapsed(collapsed=>!collapsed)}}>☰</button>
+        </div>
+        <Show when={workspaceMenuOpen()}><div class="workspace-options" role="menu" aria-label="Workspace options"><For each={state().workspaces}>{w=><button role="menuitemradio" aria-checked={workspace()?.id===w.id} classList={{selected:workspace()?.id===w.id}} onClick={()=>{chooseWorkspace(w.id);setWorkspaceMenuOpen(false)}}><span class="workspace-option-avatar" style={{background:w.color}}>{w.name[0]}</span><span>{w.name}</span><b>✓</b></button>}</For><div class="workspace-menu-divider"/><button class="workspace-add" role="menuitem" onClick={()=>{setWorkspaceMenuOpen(false);setWorkspaceOpen(true)}}><span>+</span>Add new workspace</button></div></Show>
+      </div>
       <nav class="nav-list">
-        <For each={Object.keys(icons) as View[]}>{item=><button classList={{active:view()===item}} onClick={()=>{setView(item);setMobileNav(false)}}><span>{icons[item]}</span>{item[0]?.toUpperCase()}{item.slice(1)}<Show when={item==="time"&&running()}><i class="live-dot"/></Show></button>}</For>
+        <For each={Object.keys(icons) as View[]}>{item=><button title={sidebarCollapsed()?`${item[0]?.toUpperCase()}${item.slice(1)}`:undefined} classList={{active:view()===item}} onClick={()=>{setView(item);setMobileNav(false)}}><span class="nav-icon">{icons[item]}</span><span class="nav-label">{item[0]?.toUpperCase()}{item.slice(1)}</span><Show when={item==="time"&&running()}><i class="live-dot"/></Show></button>}</For>
       </nav>
       <div class="project-head"><span>Projects</span><button aria-label="Add project" onClick={()=>setProjectOpen(true)}>+</button></div>
       <div class="project-list">
@@ -77,7 +83,7 @@ export default function App(){
         }</For>
       </div>
     </aside>
-    <main class="main">
+    <main classList={{main:true,"sidebar-collapsed":sidebarCollapsed()}}>
       <header class="topbar">
         <button class="menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}>☰</button>
         <strong class="project-title">{project()?.name??"Projects"}</strong>
