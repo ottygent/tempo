@@ -58,4 +58,46 @@ describe("document editor", () => {
     expect(within(library as HTMLElement).queryByText(projectDocument.content)).toBeNull();
     expect(document.querySelector(".document-editor-header")?.classList.contains("document-editor-header")).toBe(true);
   });
+
+  it("renames a document inline after double-clicking its editor filename", async () => {
+    const project: Project = {
+      id: "project-1",
+      workspaceId: "workspace-1",
+      name: "Launch",
+      description: "",
+      color: "#6c52e3",
+      status: "active",
+      startDate: "",
+      dueDate: "",
+      createdAt: "2026-07-31T00:00:00Z",
+    };
+    const projectDocument: Document = {
+      id: "doc-1",
+      projectId: project.id,
+      title: "Untitled document",
+      content: "Existing content",
+      createdAt: "2026-07-31T00:00:00Z",
+      updatedAt: "2026-07-31T00:00:00Z",
+    };
+    const save = vi.fn(async (id:string,title:string,content:string) => ({...projectDocument,id,title,content}));
+
+    render(() => <DocumentsView
+      documents={[projectDocument]}
+      project={project}
+      createRequest={0}
+      consumeCreateRequest={vi.fn()}
+      create={vi.fn()}
+      save={save}
+      remove={vi.fn()}
+    />);
+
+    const filename = await screen.findByRole("button", {name: "Rename Untitled document"});
+    await fireEvent.dblClick(filename);
+    const input = screen.getByRole("textbox", {name: "Document filename"});
+    await fireEvent.input(input, {target: {value: "Project brief"}});
+    await fireEvent.keyDown(input, {key: "Enter"});
+
+    await waitFor(() => expect(save).toHaveBeenCalledWith("doc-1", "Project brief", "Existing content"));
+    expect(screen.getByRole("button", {name: "Rename Project brief"})).toBeTruthy();
+  });
 });
