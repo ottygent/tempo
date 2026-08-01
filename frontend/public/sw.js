@@ -1,4 +1,5 @@
-const CACHE_NAME = "tempo-shell-v2";
+const CACHE_NAME = "tempo-shell-v3";
+const IS_LOCAL = self.location.hostname === "127.0.0.1" || self.location.hostname === "localhost";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -8,19 +9,23 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+  if (!IS_LOCAL) event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+      .then(keys => Promise.all(keys.filter(key => key.startsWith("tempo-") && (IS_LOCAL || key !== CACHE_NAME)).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
+      .then(() => IS_LOCAL ? self.clients.matchAll({type: "window"}) : [])
+      .then(clients => Promise.all(clients.map(client => client.navigate(client.url).catch(() => undefined))))
   );
 });
 
 self.addEventListener("fetch", event => {
+  if (IS_LOCAL) return;
+
   const request = event.request;
   if (request.method !== "GET") return;
 
