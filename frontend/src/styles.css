@@ -72,11 +72,11 @@
   --space-10: 40px;
 
   /* Radius */
-  --r-sm:   8px;
-  --r-md:   12px;
-  --r-lg:   16px;
-  --r-xl:   24px;
-  --r-full: 9999px;
+  --r-sm:   4px;
+  --r-md:   4px;
+  --r-lg:   4px;
+  --r-xl:   4px;
+  --r-full: 4px;
 
   /* Elevation (Dark mode shadows) */
   --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
@@ -207,7 +207,7 @@ a:hover { text-decoration: underline; }
 .brand-mark {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: linear-gradient(135deg, var(--violet-light), var(--violet-dark));
   display: grid;
   place-items: center;
@@ -432,7 +432,7 @@ a:hover { text-decoration: underline; }
 .workspace-avatar {
   width: 26px;
   height: 26px;
-  border-radius: 7px;
+  border-radius: 4px;
   display: grid;
   place-items: center;
   color: #fff;
@@ -490,7 +490,7 @@ a:hover { text-decoration: underline; }
   top: 25%;
   height: 50%;
   width: 3px;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 4px 4px 0;
   background: var(--violet-light);
   box-shadow: 0 0 8px var(--violet-alpha);
 }
@@ -570,7 +570,7 @@ a:hover { text-decoration: underline; }
 .project-select i {
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: 4px;
   flex: 0 0 auto;
 }
 
@@ -663,7 +663,7 @@ a:hover { text-decoration: underline; }
 .sidebar-foot .avatar {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--amber) 28%, var(--paper));
   color: color-mix(in srgb, var(--ink) 95%, var(--amber));
   display: grid;
@@ -908,7 +908,7 @@ a:hover { text-decoration: underline; }
 .avatars i {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 4px;
   background: var(--violet-bg2);
   border: 2.5px solid var(--paper);
   display: grid;
@@ -1019,14 +1019,14 @@ a:hover { text-decoration: underline; }
   font-size: 10px;
 }
 
-/* Decorative circle */
+/* Decorative accent */
 .metric i {
   position: absolute;
   right: -18px;
   bottom: -24px;
   width: 80px;
   height: 80px;
-  border-radius: 50%;
+  border-radius: 4px;
   opacity: .12;
 }
 
@@ -1098,7 +1098,7 @@ a:hover { text-decoration: underline; }
 .focus-row .priority {
   width: 3px;
   height: 32px;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--edge);
   flex-shrink: 0;
 }
@@ -1198,7 +1198,7 @@ a:hover { text-decoration: underline; }
 .column > header i {
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--muted);
 }
 
@@ -1374,7 +1374,7 @@ a:hover { text-decoration: underline; }
 .mini-avatar {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: 4px;
   background: var(--violet-bg2);
   color: var(--violet-dark);
   display: grid;
@@ -1597,11 +1597,11 @@ a:hover { text-decoration: underline; }
   display: block;
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--violet);
 }
 
-.timeline-legend .legend-range  { background: var(--violet); border-radius: 3px; }
+.timeline-legend .legend-range  { background: var(--violet); border-radius: 4px; }
 .timeline-legend .legend-milestone { width: 9px; height: 9px; transform: rotate(45deg); }
 
 .timeline-legend .legend-unscheduled {
@@ -1685,7 +1685,7 @@ a:hover { text-decoration: underline; }
   color: #fff;
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: 4px;
   display: grid;
   place-items: center;
   margin: -4px;
@@ -1718,7 +1718,7 @@ a:hover { text-decoration: underline; }
   grid-row: 1/3;
   align-self: center;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--violet-bg2);
   color: var(--violet-dark);
   font-size: 6px;
@@ -1852,7 +1852,7 @@ a:hover { text-decoration: underline; }
 .time-row > button {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 4px;
   background: var(--violet-bg);
   color: var(--violet);
   border: 0;
@@ -2011,7 +2011,7 @@ a:hover { text-decoration: underline; }
 .modal > header button {
   border: 0;
   background: var(--edge-subtle);
-  border-radius: 50%;
+  border-radius: 4px;
   width: 28px;
   height: 28px;
   display: grid;
