@@ -2067,16 +2067,49 @@ a:hover { text-decoration: underline; }
 
 .modal textarea { resize: vertical; line-height: 1.55; }
 
-.confirm-project-delete { padding: 20px 22px; }
+.delete-modal { width: min(460px, 100%); }
 
-.confirm-project-delete p {
-  margin: 0 0 10px;
+.confirm-delete {
+  display: grid;
+  gap: 20px;
+  padding: 20px 22px 18px;
+}
+
+.confirm-delete-message {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.confirm-delete-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--danger-edge);
+  border-radius: 4px;
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.confirm-delete p {
+  margin: 0 0 8px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
 }
 
-.confirm-project-delete p strong { color: var(--ink); }
+.confirm-delete p:last-child { margin-bottom: 0; }
+
+.confirm-delete p strong { color: var(--ink); }
+
+.confirm-delete > footer {
+  padding-top: 16px;
+  border-top: 1px solid var(--edge-subtle);
+}
 
 .form-grid {
   display: grid;
@@ -2387,4 +2420,10 @@ a:hover { text-decoration: underline; }
   .login-page { padding: 14px; }
   .login-card { padding: 26px 20px; }
   .login-copy h1 { font-size: 22px; }
+
+  .confirm-delete { padding: 16px; }
+
+  .confirm-delete > footer { display: grid; grid-template-columns: 1fr 1fr; }
+
+  .confirm-delete > footer button { width: 100%; }
 }
