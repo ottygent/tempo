@@ -14,15 +14,15 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: #3f4d62 #222a38;
+  scrollbar-color: var(--muted) var(--paper);
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 
 .project-list::-webkit-scrollbar { width: 8px; }
-.project-list::-webkit-scrollbar-track { background: #1e2638; border-radius: 9999px; }
-.project-list::-webkit-scrollbar-thumb { background: #3f4d62; border: 2px solid #1e2638; border-radius: 9999px; }
-.project-list::-webkit-scrollbar-thumb:hover { background: #566074; }
+.project-list::-webkit-scrollbar-track { background: var(--edge-subtle); border-radius: 9999px; }
+.project-list::-webkit-scrollbar-thumb { background: var(--muted); border: 2px solid var(--edge-subtle); border-radius: 9999px; }
+.project-list::-webkit-scrollbar-thumb:hover { background: var(--ink-secondary); }
 
 .project-row {
   display: grid;
@@ -97,7 +97,7 @@
   height: 32px;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(140deg, #fbbf24, #d97706);
+  background: linear-gradient(140deg, var(--violet-light), var(--violet-dark));
   color: #fff;
   font-size: 10px;
   font-weight: 800;
@@ -333,7 +333,7 @@
 .profile-dialog-nav button.danger:hover,
 .profile-dialog-nav button.danger:focus-visible {
   background: var(--danger-light);
-  color: #a03030;
+  color: var(--danger);
 }
 
 /* Profile content pane */
@@ -348,7 +348,7 @@
   border-radius: 18px;
   background: linear-gradient(145deg, var(--violet-light), var(--violet-dark));
   color: #fff;
-  box-shadow: 0 10px 24px rgba(139, 92, 246, 0.44);
+  box-shadow: 0 10px 24px var(--violet-alpha);
   font-size: 16px;
   font-weight: 800;
 }
@@ -382,7 +382,7 @@
   justify-content: space-between;
   margin-top: 22px;
   padding: 11px 14px;
-  border: 1px solid #ece8f8;
+  border: 1px solid var(--edge-subtle);
   border-radius: var(--r-md);
   background: var(--violet-bg);
 }
@@ -566,7 +566,7 @@
   border: 1px solid var(--danger-edge);
   border-radius: var(--r-md);
   background: var(--danger-light);
-  color: #a03838;
+  color: var(--danger);
   font-size: 10px;
   line-height: 1.45;
 }

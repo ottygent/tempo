@@ -71,13 +71,13 @@
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
-  box-shadow: 0 3px 8px #6c52e330;
+  box-shadow: 0 3px 8px var(--violet-alpha);
   transition: background var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast);
 }
 
 .document-new:hover {
   background: var(--violet-dark);
-  box-shadow: 0 4px 12px #6c52e340;
+  box-shadow: 0 4px 12px var(--violet-alpha);
   transform: translateY(-1px);
 }
 
@@ -222,7 +222,7 @@
 .document-actions-menu button:hover { background: var(--violet-bg); color: var(--violet-dark); }
 
 .document-actions-menu button.danger { color: var(--danger); }
-.document-actions-menu button.danger:hover { background: var(--danger-light); color: #a03030; }
+.document-actions-menu button.danger:hover { background: var(--danger-light); color: var(--danger); }
 
 /* Library empty state */
 .document-library-empty {
@@ -412,8 +412,8 @@
   overflow: auto;
   padding: 14px 16px;
   border-radius: var(--r-md);
-  background: #1e2535;
-  color: #e2e8f0;
+  background: color-mix(in srgb, var(--ink) 8%, var(--paper));
+  color: var(--ink);
   font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace;
   margin: 0 0 14px;
 }
