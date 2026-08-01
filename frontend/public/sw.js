@@ -31,7 +31,10 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put("/", response.clone()));
+          if (response.ok && response.type === "basic") {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put("/", responseClone));
+          }
           return response;
         })
         .catch(() => caches.match("/"))
@@ -43,7 +46,10 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
+          if (response.ok && response.type === "basic") {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone));
+          }
           return response;
         })
         .catch(() => caches.match(request))
@@ -54,7 +60,8 @@ self.addEventListener("fetch", event => {
   event.respondWith(
     caches.match(request).then(cached => cached || fetch(request).then(response => {
       if (response.ok && response.type === "basic") {
-        caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
+        const responseClone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(request, responseClone));
       }
       return response;
     }))

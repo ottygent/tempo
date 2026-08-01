@@ -101,7 +101,24 @@ func sameOrigin(r *http.Request) bool {
 		return true
 	}
 	parsed, err := url.Parse(origin)
-	return err == nil && parsed.Host == r.Host
+	if err != nil {
+		return false
+	}
+	originHost := parsed.Hostname()
+	reqHost := strings.Split(r.Host, ":")[0]
+	if reqHost == "" {
+		return false
+	}
+	if originHost == reqHost {
+		return true
+	}
+	if (originHost == "localhost" && reqHost == "127.0.0.1") || (originHost == "127.0.0.1" && reqHost == "localhost") {
+		return true
+	}
+	if forwardedHost := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+		return strings.EqualFold(originHost, strings.Split(forwardedHost, ":")[0])
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
