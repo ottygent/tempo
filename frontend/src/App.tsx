@@ -19,16 +19,16 @@ export default function App(){
   };
   const [theme,setTheme]=createSignal<"dark"|"light">((localStorage.getItem("tempo_theme") as "dark"|"light")||"dark");
   const [state,setState]=createSignal<AppState>(empty),[selectedWorkspace,setSelectedWorkspace]=createSignal(""),[selectedProject,setSelectedProject]=createSignal(""),[view,setView]=createSignal<View>("overview"),[documentCreateRequest,setDocumentCreateRequest]=createSignal(0);
-  const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[profileOpen,setProfileOpen]=createSignal(false),[settingsOpen,setSettingsOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[sidebarCollapsed,setSidebarCollapsed]=createSignal(false),[now,setNow]=createSignal(Date.now());
+  const [loading,setLoading]=createSignal(true),[error,setError]=createSignal(""),[taskOpen,setTaskOpen]=createSignal(false),[projectOpen,setProjectOpen]=createSignal(false),[workspaceOpen,setWorkspaceOpen]=createSignal(false),[profileOpen,setProfileOpen]=createSignal(false),[settingsOpen,setSettingsOpen]=createSignal(false),[workspaceMenuOpen,setWorkspaceMenuOpen]=createSignal(false),[actionMenuOpen,setActionMenuOpen]=createSignal(false),[projectMenu,setProjectMenu]=createSignal(""),[deleteTarget,setDeleteTarget]=createSignal<Project>(),[mobileNav,setMobileNav]=createSignal(false),[sidebarCollapsed,setSidebarCollapsed]=createSignal(false),[now,setNow]=createSignal(Date.now());
   const [authenticated,setAuthenticated]=createSignal(false),[authReady,setAuthReady]=createSignal(false),[username,setUsername]=createSignal(""),[email,setEmail]=createSignal("");
-  let workspaceMenu!:HTMLDivElement;
+  let workspaceMenu!:HTMLDivElement,actionDock!:HTMLDivElement;
   createEffect(()=>{const currentTheme=theme();document.documentElement.setAttribute("data-theme",currentTheme);localStorage.setItem("tempo_theme",currentTheme);syncThemeMeta(currentTheme)});
   const handleError=(e:unknown,fallback:string)=>{if(e instanceof ApiError&&e.status===401){setAuthenticated(false);setState(empty);return}setError(e instanceof Error?e.message:fallback)};
   const refresh=async()=>{try{const next=await api.state();setState(next);const workspaceId=next.workspaces.some(w=>w.id===selectedWorkspace())?selectedWorkspace():(next.workspaces[0]?.id??"");setSelectedWorkspace(workspaceId);const available=next.projects.filter(p=>p.workspaceId===workspaceId&&p.status!=="archived");if(!available.some(p=>p.id===selectedProject()))setSelectedProject(available[0]?.id??"");setError("")}catch(e){handleError(e,"Unable to load Tempo")}finally{setLoading(false)}};
   const bootstrap=async()=>{try{const session=await api.session();setAuthenticated(session.authenticated);setUsername(session.username??"");setEmail(session.email??"");if(session.authenticated)await refresh();else setLoading(false)}catch(e){handleError(e,"Unable to check your session");setLoading(false)}finally{setAuthReady(true)}};
   const login=async(user:string,password:string)=>{const session=await api.login(user,password);setAuthenticated(session.authenticated);setUsername(session.username??user);setEmail(session.email??"");setLoading(true);await refresh()};
   const logout=async()=>{try{await api.logout()}finally{setAuthenticated(false);setEmail("");setProfileOpen(false);setSettingsOpen(false);setState(empty);setSelectedProject("");setSelectedWorkspace("")}};
-  onMount(()=>{void bootstrap();const timer=setInterval(()=>setNow(Date.now()),1000),closeMenu=(event:PointerEvent)=>{const target=event.target as Element;if(workspaceMenuOpen()&&workspaceMenu&&!workspaceMenu.contains(target))setWorkspaceMenuOpen(false);if(projectMenu()&&!target.closest?.(".project-actions"))setProjectMenu("")},closeOnEscape=(event:KeyboardEvent)=>{if(event.key==="Escape"){setWorkspaceMenuOpen(false);setProjectMenu("")}};document.addEventListener("pointerdown",closeMenu);document.addEventListener("keydown",closeOnEscape);onCleanup(()=>{clearInterval(timer);document.removeEventListener("pointerdown",closeMenu);document.removeEventListener("keydown",closeOnEscape)})});
+  onMount(()=>{void bootstrap();const timer=setInterval(()=>setNow(Date.now()),1000),closeMenu=(event:PointerEvent)=>{const target=event.target as Element;if(workspaceMenuOpen()&&workspaceMenu&&!workspaceMenu.contains(target))setWorkspaceMenuOpen(false);if(actionMenuOpen()&&actionDock&&!actionDock.contains(target))setActionMenuOpen(false);if(projectMenu()&&!target.closest?.(".project-actions"))setProjectMenu("")},closeOnEscape=(event:KeyboardEvent)=>{if(event.key==="Escape"){setWorkspaceMenuOpen(false);setActionMenuOpen(false);setProjectMenu("")}};document.addEventListener("pointerdown",closeMenu);document.addEventListener("keydown",closeOnEscape);onCleanup(()=>{clearInterval(timer);document.removeEventListener("pointerdown",closeMenu);document.removeEventListener("keydown",closeOnEscape)})});
   const workspace=createMemo(()=>state().workspaces.find(w=>w.id===selectedWorkspace())??state().workspaces[0]);
   const projects=createMemo(()=>state().projects.filter(p=>p.workspaceId===workspace()?.id&&p.status!=="archived"));
   const project=createMemo(()=>projects().find(p=>p.id===selectedProject())??projects()[0]);
@@ -98,9 +98,14 @@ export default function App(){
           </button>
         </div>
       </header>
-      <div class="action-dock" role="group" aria-label="Quick actions">
-        <button type="button" class="dock-pill dock-task" disabled={!project()} onClick={()=>setTaskOpen(true)}><span aria-hidden="true">+</span> Task</button>
-        <button type="button" class="dock-pill dock-doc" disabled={!project()} onClick={()=>{setView("docs");setDocumentCreateRequest(request=>request+1)}}><span aria-hidden="true">+</span> Doc</button>
+      <div class="action-dock" ref={actionDock}>
+        <Show when={actionMenuOpen()}>
+          <div class="fab-actions" id="quick-create-actions" role="menu" aria-label="Quick create">
+            <button type="button" class="fab-action" role="menuitem" disabled={!project()} onClick={()=>{setTaskOpen(true);setActionMenuOpen(false)}}><span class="fab-label">New task</span><span class="fab-action-icon" aria-hidden="true">✓</span></button>
+            <button type="button" class="fab-action" role="menuitem" disabled={!project()} onClick={()=>{setView("docs");setDocumentCreateRequest(request=>request+1);setActionMenuOpen(false)}}><span class="fab-label">New doc</span><span class="fab-action-icon" aria-hidden="true">▤</span></button>
+          </div>
+        </Show>
+        <button type="button" classList={{"fab-main":true,open:actionMenuOpen()}} aria-label={actionMenuOpen()?"Close quick actions":"Open quick actions"} aria-haspopup="menu" aria-controls="quick-create-actions" aria-expanded={actionMenuOpen()} onClick={()=>setActionMenuOpen(open=>!open)}><span aria-hidden="true">{actionMenuOpen()?"×":"+"}</span></button>
       </div>
       <Show when={error()}><div class="error-banner">{error()}<button onClick={()=>setError("")}>×</button></div></Show>
       <Show when={!loading()&&project()} fallback={<div class="loading">{loading()?"Loading your workspace…":"No active projects. Create a project to get started."}</div>}>

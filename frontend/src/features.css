@@ -156,94 +156,100 @@
 }
 
 /* --------------------------------------------------------------------------
-   Action dock — floating bottom pill
+   Quick-create speed dial
    -------------------------------------------------------------------------- */
 .action-dock {
   position: fixed;
-  right: auto;
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(-50%);
+  right: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
   z-index: 18;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 7px;
+  gap: 12px;
   width: max-content;
-  max-width: calc(100vw - 24px);
-  padding: 7px;
-  border: 1px solid var(--edge);
-  border-radius: 4px;
-  background: var(--paper);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  max-width: calc(100vw - 32px);
 }
 
-.action-dock .dock-pill {
+.fab-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  animation: fab-actions-in var(--dur-base) var(--ease);
+}
+
+.fab-action {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-width: 98px;
-  height: 42px;
-  padding-inline: 18px;
-  border: 1px solid transparent;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.fab-label {
+  padding: 7px 10px;
+  border: 1px solid var(--edge-subtle);
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 750;
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
-  letter-spacing: .1px;
 }
 
-.action-dock .dock-pill > span {
+.fab-action-icon {
+  display: grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--edge-subtle);
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: var(--shadow-md);
+  color: var(--ink-secondary);
   font-size: 17px;
-  font-weight: 400;
-  line-height: 1;
 }
 
-.action-dock .dock-task {
-  background: linear-gradient(145deg, var(--violet-light), var(--violet-dark));
+.fab-main {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  align-self: flex-end;
+  border-radius: 50%;
+  background: #5b35f5;
+  box-shadow: 0 8px 22px color-mix(in srgb, #5b35f5 42%, transparent);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.34);
+  transition: transform var(--dur-base) var(--ease), background var(--dur-fast), box-shadow var(--dur-fast);
 }
 
-.action-dock .dock-doc {
-  border-color: var(--violet-alpha);
-  background: var(--violet-bg);
-  color: var(--violet);
+.fab-main > span {
+  font-size: 30px;
+  font-weight: 300;
+  line-height: 1;
+  transform: translateY(-1px);
 }
 
-.action-dock .dock-doc:hover {
-  border-color: var(--violet);
-  background: var(--violet-bg2);
+.fab-main.open {
+  background: #ff1744;
+  box-shadow: 0 8px 22px color-mix(in srgb, #ff1744 38%, transparent);
 }
 
-.action-dock button:focus-visible {
-  outline: 3px solid var(--violet);
-  outline-offset: 2px;
+.fab-main.open > span { font-size: 28px; }
+
+.fab-action:disabled { cursor: not-allowed; opacity: .45; }
+
+.action-dock button:focus-visible { outline: 3px solid var(--violet); outline-offset: 2px; }
+
+@keyframes fab-actions-in {
+  from { opacity: 0; transform: translateY(12px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.action-dock button:disabled { transform: none !important; }
-
-.action-dock .dock-task:disabled,
-.action-dock .dock-doc:disabled { opacity: .5; }
-
-/* Hover lift animation — respects reduced motion */
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .action-dock button {
-    transition:
-      transform var(--dur-base) var(--ease),
-      box-shadow var(--dur-base) var(--ease),
-      background-color var(--dur-fast);
-  }
-
-  .action-dock button:not(:disabled):hover {
-    transform: translateY(-3px);
-  }
-
-  .action-dock .dock-task:not(:disabled):hover {
-    box-shadow: 0 10px 22px rgba(101, 72, 222, .42);
-  }
+  .fab-main:not(:disabled):hover { transform: translateY(-2px) scale(1.04); }
+  .fab-action:not(:disabled):hover .fab-action-icon { background: var(--violet-bg); color: var(--violet); }
 }
 
 /* --------------------------------------------------------------------------
@@ -602,20 +608,8 @@
   .project-title { flex: 1; }
 
   .action-dock {
-    position: static;
-    transform: none;
-    order: 3;
-    flex: none;
-    max-width: calc(100vw - 16px);
-    margin: 8px auto calc(8px + env(safe-area-inset-bottom));
-    padding: 6px;
-    border-radius: 4px;
-  }
-
-  .action-dock .dock-pill {
-    min-width: 106px;
-    height: 40px;
-    padding-inline: 14px;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
   }
 
   .header-profile {
@@ -675,13 +669,7 @@
 
   .header-avatar { width: 28px; height: 28px; }
 
-  .action-dock { gap: 4px; }
-
-  .action-dock .dock-pill {
-    min-width: 96px;
-    height: 38px;
-    padding-inline: 11px;
-  }
+  .action-dock { right: 12px; }
 }
 
 /* Documents view at narrow widths */
