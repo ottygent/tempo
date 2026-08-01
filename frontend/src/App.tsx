@@ -46,6 +46,7 @@ export default function App(){
   const deleteProject=async(target:Project)=>{setDeleteTarget(undefined);setProjectMenu("");if(selectedProject()===target.id)setSelectedProject("");await mutate(()=>api.deleteProject(target.id))};
   const createDocument=async()=>{if(!project())throw new Error("Select a project first");try{const created=await api.createDocument({projectId:project()!.id,title:"Untitled document",content:""});setState(current=>({...current,documents:[...current.documents,created]}));return created}catch(e){handleError(e,"Unable to create document");throw e}};
   const saveDocument=async(id:string,title:string,content:string)=>{try{const updated=await api.updateDocument(id,{title,content});setState(current=>({...current,documents:current.documents.map(document=>document.id===id?updated:document)}));return updated}catch(e){handleError(e,"Unable to save document");throw e}};
+  const saveTaskDetails=async(id:string,input:Partial<Task>)=>{try{const updated=await api.updateTask(id,input);setState(current=>({...current,tasks:current.tasks.map(task=>task.id===id?updated:task)}));return updated}catch(e){handleError(e,"Unable to save task");throw e}};
   const removeDocument=async(id:string)=>{try{await api.deleteDocument(id);setState(current=>({...current,documents:current.documents.filter(document=>document.id!==id)}))}catch(e){handleError(e,"Unable to delete document");throw e}};
   return <><Show when={authReady()} fallback={<div class="auth-loading"><span/>Securing your workspace…</div>}>
   <Show when={authenticated()} fallback={<Login defaultUsername={username()||"admin"} onLogin={login}/> }><div class="app-shell">
@@ -125,7 +126,7 @@ export default function App(){
     <Show when={profileOpen()}><ProfileModal username={username()} email={email()} close={()=>setProfileOpen(false)} settings={()=>{setProfileOpen(false);setSettingsOpen(true)}} logout={()=>void logout()}/></Show>
     <Show when={settingsOpen()}><SettingsModal username={username()} email={email()} close={()=>setSettingsOpen(false)} save={updateSettings} saved={(session,input)=>{setUsername(session.username??input.username);setEmail(session.email??input.email);setSettingsOpen(false)}}/></Show>
     <Show when={deleteTarget()}>{target=><DeleteProjectModal project={target()} close={()=>setDeleteTarget(undefined)} confirm={()=>deleteProject(target())}/>}</Show>
-    <Show when={detailTask()}>{task=><TaskDetailsDrawer task={task()} close={()=>setTaskDetailId("")}/>}</Show>
+    <Show when={detailTask()}>{task=><TaskDetailsDrawer task={task()} close={()=>setTaskDetailId("")} save={input=>saveTaskDetails(task().id,input)}/>}</Show>
   </div></Show></Show></>
 }
 
@@ -207,26 +208,46 @@ function Timeline(props:{tasks:Task[];project:Project;onTask:(task:Task)=>void})
 function Calendar(props:{tasks:Task[];onTask:(task:Task)=>void}){const [anchor,setAnchor]=createSignal(new Date()),days=createMemo(()=>monthGrid(anchor())),markers=createMemo(()=>props.tasks.flatMap(task=>calendarMarkers(task).map(marker=>({task,...marker})))),monthPrefix=()=>`${anchor().getFullYear()}-${String(anchor().getMonth()+1).padStart(2,"0")}`,monthMarkers=()=>markers().filter(item=>item.date.startsWith(monthPrefix())).length,unscheduled=()=>props.tasks.filter(task=>calendarMarkers(task).length===0).length,change=(amount:number)=>{const date=new Date(anchor());date.setDate(1);date.setMonth(date.getMonth()+amount);setAnchor(date)};return <div class="calendar-view"><div class="view-toolbar calendar-toolbar"><div><h2>{anchor().toLocaleDateString(undefined,{month:"long",year:"numeric"})}</h2><span>{monthMarkers()} scheduled dates · {unscheduled()} unscheduled {unscheduled()===1?"task":"tasks"}</span></div><div class="calendar-controls"><button aria-label="Previous month" onClick={()=>change(-1)}>←</button><button onClick={()=>setAnchor(new Date())}>Today</button><button aria-label="Next month" onClick={()=>change(1)}>→</button></div></div><div class="calendar-legend"><span><i class="start"/>Start</span><span><i class="due"/>Due</span><span><i class="done"/>Completed</span></div><span class="planning-scroll-hint">Swipe calendar horizontally →</span><div class="calendar-scroll"><section class="calendar-grid" aria-label="Task calendar"><For each={["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]}>{day=><header>{day}</header>}</For><For each={days()}>{date=>{const key=()=>localDateKey(date),dayMarkers=()=>markers().filter(item=>item.date===key());return <div classList={{day:true,muted:date.getMonth()!==anchor().getMonth(),today:key()===localDateKey(new Date())}}><b>{date.getDate()}</b><div class="day-events"><For each={dayMarkers()}>{item=><article class={`event task-detail-trigger ${item.task.priority} ${item.task.status} ${item.kind}`} onClick={()=>props.onTask(item.task)} title={`${item.task.title} · ${item.kind==="start"?"Starts":"Due"} · ${statusLabel(item.task.status)} · ${item.task.assignee||"Unassigned"}`}><span>{item.kind==="start"?"Start":"Due"}</span><strong>{item.task.title}</strong><small>{statusLabel(item.task.status)} · {item.task.assignee||"Unassigned"}</small></article>}</For></div></div>}}</For></section></div></div>}
 function TimeView(props:{tasks:Task[];state:AppState;now:number;mutate:(a:()=>Promise<unknown>)=>Promise<void>;onTask:(task:Task)=>void}){const active=()=>props.state.timeEntries.find(e=>!e.stoppedAt),activeTask=()=>props.tasks.find(t=>t.id===active()?.taskId);return <div class="time-view"><div class="timer-hero"><div><span>{active()?"TRACKING NOW":"FOCUS TIMER"}</span><h2>{activeTask()?.title??"Ready when you are"}</h2><p>{activeTask()?.assignee??"Choose a project task to begin tracking time."}</p></div><strong>{active()?secondsLabel(taskSeconds(active()!.taskId,[active()!],props.now)):"0:00"}</strong><Show when={active()}><button class="stop" onClick={()=>void props.mutate(()=>api.stopTimer())}>■ Stop timer</button></Show></div><section class="panel time-list"><div class="panel-title"><div><span>PROJECT TASKS</span><h2>Time by task</h2></div><strong>{secondsLabel(props.tasks.reduce((s,t)=>s+taskSeconds(t.id,props.state.timeEntries,props.now),0))}</strong></div><For each={props.tasks}>{t=><div class="time-row task-detail-trigger" onClick={()=>props.onTask(t)}><button disabled={!!active()} onClick={event=>{event.stopPropagation();void props.mutate(()=>api.startTimer(t.id))}}>▶</button><div><strong>{t.title}</strong><span>{t.assignee||"Unassigned"} · estimate {minutesLabel(t.estimateMinutes)}</span></div><div class="time-progress"><i style={{width:`${Math.min(100,taskSeconds(t.id,props.state.timeEntries,props.now)/(Math.max(1,t.estimateMinutes)*60)*100)}%`}}/></div><b>{secondsLabel(taskSeconds(t.id,props.state.timeEntries,props.now))}</b></div>}</For></section></div>}
 
-export function TaskDetailsDrawer(props:{task:Task;close:()=>void}){
+export function TaskDetailsDrawer(props:{task:Task;close:()=>void;save:(input:Partial<Task>)=>Promise<Task>}){
   const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:undefined;
-  let closeButton!:HTMLButtonElement;
+  const [editing,setEditing]=createSignal(false),[saving,setSaving]=createSignal(false),[error,setError]=createSignal("");
+  let closeButton!:HTMLButtonElement,form!:HTMLFormElement;
   const scheduleDate=(value:string)=>value?new Date(`${value}T00:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}):"Not set";
-  const keydown=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();props.close()}};
+  const keydown=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();if(editing()){setEditing(false);setError("")}else props.close()}};
+  const submit=async(event:SubmitEvent)=>{event.preventDefault();const data=new FormData(form),title=String(data.get("title")).trim();if(!title)return;setSaving(true);setError("");try{await props.save({title,description:String(data.get("description")).trim(),status:String(data.get("status")) as TaskStatus,priority:String(data.get("priority")),assignee:String(data.get("assignee")).trim(),estimateMinutes:Number(data.get("estimateMinutes")),startDate:String(data.get("startDate")),dueDate:String(data.get("dueDate")),tags:String(data.get("tags")).split(",").map(tag=>tag.trim()).filter(Boolean)});setEditing(false)}catch(cause){setError(cause instanceof Error?cause.message:"Unable to save task")}finally{setSaving(false)}};
   onMount(()=>{document.addEventListener("keydown",keydown);requestAnimationFrame(()=>closeButton.focus())});
   onCleanup(()=>{document.removeEventListener("keydown",keydown);if(previousFocus?.isConnected)requestAnimationFrame(()=>previousFocus.focus())});
   return <div class="task-detail-layer" onMouseDown={event=>{if(event.target===event.currentTarget)props.close()}}><aside class="task-detail-drawer" role="dialog" aria-modal="true" aria-label={`Task details: ${props.task.title}`}>
-    <header><div><span>TASK DETAILS</span><h2>{props.task.title}</h2></div><button ref={closeButton} aria-label="Close task details" onClick={props.close}>×</button></header>
+    <header><div><span>{editing()?"EDIT TASK":"TASK DETAILS"}</span><h2>{props.task.title}</h2></div><div class="task-detail-header-actions"><Show when={!editing()}><button class="task-detail-edit" onClick={()=>{setError("");setEditing(true)}}>Edit</button></Show><button ref={closeButton} class="task-detail-close" aria-label="Close task details" onClick={props.close}>×</button></div></header>
     <div class="task-detail-body">
-      <div class="task-detail-badges"><span class={`status ${props.task.status}`}>{statusLabel(props.task.status)}</span><span class={`priority ${props.task.priority}`}>{props.task.priority}</span></div>
-      <section><span>DESCRIPTION</span><p classList={{empty:!props.task.description}}>{props.task.description||"No description provided."}</p></section>
-      <dl class="task-detail-grid">
-        <div><dt>Assignee</dt><dd>{props.task.assignee||"Unassigned"}</dd></div>
-        <div><dt>Estimate</dt><dd>{props.task.estimateMinutes?minutesLabel(props.task.estimateMinutes):"Not estimated"}</dd></div>
-        <div><dt>Start date</dt><dd>{scheduleDate(props.task.startDate)}</dd></div>
-        <div><dt>Due date</dt><dd>{scheduleDate(props.task.dueDate)}</dd></div>
-      </dl>
-      <section><span>TAGS</span><div class="task-detail-tags"><Show when={props.task.tags.length} fallback={<em>No tags</em>}><For each={props.task.tags}>{tag=><span>{tag}</span>}</For></Show></div></section>
-      <div class="task-detail-audit"><span>Created <time datetime={props.task.createdAt}>{documentDate(props.task.createdAt)}</time></span><span>Last updated <time datetime={props.task.updatedAt}>{documentDate(props.task.updatedAt)}</time></span></div>
+      <Show when={editing()} fallback={<>
+        <div class="task-detail-badges"><span class={`status ${props.task.status}`}>{statusLabel(props.task.status)}</span><span class={`priority ${props.task.priority}`}>{props.task.priority}</span></div>
+        <section><span>DESCRIPTION</span><p classList={{empty:!props.task.description}}>{props.task.description||"No description provided."}</p></section>
+        <dl class="task-detail-grid">
+          <div><dt>Assignee</dt><dd>{props.task.assignee||"Unassigned"}</dd></div>
+          <div><dt>Estimate</dt><dd>{props.task.estimateMinutes?minutesLabel(props.task.estimateMinutes):"Not estimated"}</dd></div>
+          <div><dt>Start date</dt><dd>{scheduleDate(props.task.startDate)}</dd></div>
+          <div><dt>Due date</dt><dd>{scheduleDate(props.task.dueDate)}</dd></div>
+        </dl>
+        <section><span>TAGS</span><div class="task-detail-tags"><Show when={props.task.tags.length} fallback={<em>No tags</em>}><For each={props.task.tags}>{tag=><span>{tag}</span>}</For></Show></div></section>
+        <div class="task-detail-audit"><span>Created <time datetime={props.task.createdAt}>{documentDate(props.task.createdAt)}</time></span><span>Last updated <time datetime={props.task.updatedAt}>{documentDate(props.task.updatedAt)}</time></span></div>
+      </>}>
+        <form ref={form} class="task-detail-form" onSubmit={submit}>
+          <Show when={error()}><div class="task-detail-form-error" role="alert">{error()}</div></Show>
+          <label>Task title<input name="title" required maxlength={200} value={props.task.title} disabled={saving()}/></label>
+          <label>Description<textarea name="description" rows="5" disabled={saving()}>{props.task.description}</textarea></label>
+          <div class="task-detail-form-grid">
+            <label>Status<select name="status" value={props.task.status} disabled={saving()}><For each={columns}>{column=><option value={column.id}>{column.label}</option>}</For></select></label>
+            <label>Priority<select name="priority" value={props.task.priority} disabled={saving()}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+            <label>Assignee<input name="assignee" value={props.task.assignee} disabled={saving()}/></label>
+            <label>Estimate (minutes)<input name="estimateMinutes" type="number" min="0" value={props.task.estimateMinutes} disabled={saving()}/></label>
+            <label>Start date<input name="startDate" type="date" value={props.task.startDate} disabled={saving()}/></label>
+            <label>Due date<input name="dueDate" type="date" value={props.task.dueDate} disabled={saving()}/></label>
+          </div>
+          <label>Tags<input name="tags" value={props.task.tags.join(", ")} placeholder="design, launch" disabled={saving()}/></label>
+          <footer><button type="button" class="task-detail-cancel" disabled={saving()} onClick={()=>{setEditing(false);setError("")}}>Cancel</button><button type="submit" class="task-detail-save" disabled={saving()}>{saving()?"Saving…":"Save changes"}</button></footer>
+        </form>
+      </Show>
     </div>
   </aside></div>
 }
