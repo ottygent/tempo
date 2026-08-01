@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocumentsView, EditableMarkdown } from "./App";
 import type { Document, Project } from "./types";
@@ -101,5 +102,53 @@ describe("document editor", () => {
 
     await waitFor(() => expect(save).toHaveBeenCalledWith("doc-1", "Project brief", "Existing content"));
     expect(screen.getByRole("button", {name: "Rename Project brief"})).toBeTruthy();
+  });
+
+  it("opens a newly created document with empty content", async () => {
+    const project: Project = {
+      id: "project-1",
+      workspaceId: "workspace-1",
+      name: "Launch",
+      description: "",
+      color: "#6c52e3",
+      status: "active",
+      startDate: "",
+      dueDate: "",
+      createdAt: "2026-07-31T00:00:00Z",
+    };
+    const current: Document = {
+      id: "doc-1",
+      projectId: project.id,
+      title: "Current document",
+      content: "Content that must stay in the current document",
+      createdAt: "2026-07-31T00:00:00Z",
+      updatedAt: "2026-07-31T00:00:00Z",
+    };
+    const created: Document = {
+      ...current,
+      id: "doc-2",
+      title: "Untitled document",
+      content: "",
+      createdAt: "2026-08-01T00:00:00Z",
+      updatedAt: "2026-08-01T00:00:00Z",
+    };
+    const [documents,setDocuments] = createSignal<Document[]>([current]);
+
+    render(() => <DocumentsView
+      documents={documents()}
+      project={project}
+      createRequest={0}
+      consumeCreateRequest={vi.fn()}
+      create={vi.fn(async()=>{setDocuments(items=>[...items,created]);return created})}
+      save={vi.fn()}
+      remove={vi.fn()}
+    />);
+
+    const editor = screen.getByRole("textbox", {name: "Document content"});
+    await waitFor(() => expect(editor.textContent).toContain(current.content));
+    await fireEvent.click(screen.getByRole("button", {name: /New/}));
+    await screen.findByRole("button", {name: "Rename Untitled document"});
+    await waitFor(() => expect(editor.textContent).not.toContain(current.content));
+    expect(editor.textContent?.trim()).toBe("");
   });
 });

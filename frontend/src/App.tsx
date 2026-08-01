@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Match, Show, Switch, batch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { ApiError, api } from "./api";
 import type { AccountSettings, AuthSession } from "./api";
 import type { AppState, Document as ProjectDocument, Project, Task, TaskStatus } from "./types";
@@ -150,19 +150,21 @@ export function DocumentsView(props:{documents:ProjectDocument[];project:Project
   const sorted=createMemo(()=>[...props.documents].sort((a,b)=>new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime())),selected=createMemo(()=>props.documents.find(document=>document.id===selectedId()));
   let titleInput!:HTMLInputElement;
   let loadedId="",timer:number|undefined,pending:{id:string;title:string;content:string;revision:number}|undefined,revision=0,saveQueue=Promise.resolve();
+  const loadDocument=(document:ProjectDocument)=>batch(()=>{loadedId=document.id;setTitle(document.title);setContent(document.content);setSaveState("saved");setTitleEditing(false);setSelectedId(document.id)});
+  const clearDocument=()=>batch(()=>{loadedId="";setTitle("");setContent("");setSaveState("saved");setTitleEditing(false);setSelectedId("")});
   const flush=()=>{if(timer)window.clearTimeout(timer);timer=undefined;const snapshot=pending;if(!snapshot)return saveQueue;pending=undefined;saveQueue=saveQueue.catch(()=>{}).then(async()=>{if(selectedId()===snapshot.id)setSaveState("saving");try{await props.save(snapshot.id,snapshot.title,snapshot.content);if(selectedId()===snapshot.id&&snapshot.revision===revision)setSaveState("saved")}catch{if(selectedId()===snapshot.id&&snapshot.revision===revision)setSaveState("failed")}});return saveQueue};
   const queueSave=(nextTitle=title(),nextContent=content())=>{const document=selected();if(!document)return;revision++;pending={id:document.id,title:nextTitle,content:nextContent,revision};setSaveState("unsaved");if(timer)window.clearTimeout(timer);timer=window.setTimeout(()=>void flush(),650)};
-  const choose=async(id:string)=>{setActionMenu("");setTitleEditing(false);await flush();loadedId="";setSelectedId(id)};
-  const create=async()=>{setCreating(true);try{await flush();const document=await props.create();loadedId="";setSelectedId(document.id)}finally{setCreating(false)}};
-  const confirmDelete=async(document:ProjectDocument)=>{if(pending?.id===document.id){pending=undefined;if(timer)window.clearTimeout(timer)}await props.remove(document.id);setDeleteTarget(undefined);loadedId="";setSelectedId(sorted().find(candidate=>candidate.id!==document.id)?.id??"")};
+  const choose=async(id:string)=>{setActionMenu("");await flush();const document=props.documents.find(candidate=>candidate.id===id);if(document)loadDocument(document)};
+  const create=async()=>{setCreating(true);try{await flush();loadDocument(await props.create())}finally{setCreating(false)}};
+  const confirmDelete=async(document:ProjectDocument)=>{if(pending?.id===document.id){pending=undefined;if(timer)window.clearTimeout(timer)}await props.remove(document.id);setDeleteTarget(undefined);const fallback=sorted().find(candidate=>candidate.id!==document.id);if(fallback)loadDocument(fallback);else clearDocument()};
   const renameDocument=async(document:ProjectDocument,nextTitle:string)=>{setActionMenu("");if(document.id===selectedId()){setTitle(nextTitle);queueSave(nextTitle,content());await flush()}else{await props.save(document.id,nextTitle,document.content)}setRenameTarget(undefined)};
   const beginTitleEdit=()=>{setTitleEditing(true);requestAnimationFrame(()=>{titleInput?.focus();titleInput?.select()})};
   const commitTitleEdit=async()=>{if(!titleEditing())return;const nextTitle=titleInput.value.trim();setTitleEditing(false);if(!nextTitle||nextTitle===title())return;setTitle(nextTitle);queueSave(nextTitle,content());await flush()};
   const cancelTitleEdit=()=>setTitleEditing(false);
   onMount(()=>{const closeMenu=(event:MouseEvent)=>{const target=event.target;if(!(target instanceof Element)||!target.closest(".document-row-actions"))setActionMenu("")},escapeMenu=(event:KeyboardEvent)=>{if(event.key==="Escape")setActionMenu("")};document.addEventListener("click",closeMenu);document.addEventListener("keydown",escapeMenu);onCleanup(()=>{document.removeEventListener("click",closeMenu);document.removeEventListener("keydown",escapeMenu)})});
-  createEffect(()=>{const list=props.documents;if(!list.some(document=>document.id===selectedId())){loadedId="";setSelectedId(list[0]?.id??"")}});
+  createEffect(()=>{const list=props.documents;if(!list.some(document=>document.id===selectedId())){const fallback=list[0];if(fallback)loadDocument(fallback);else clearDocument()}});
   createEffect(()=>{if(props.createRequest>0){props.consumeCreateRequest();void create()}});
-  createEffect(()=>{const document=selected();if(document&&document.id!==loadedId){loadedId=document.id;setTitle(document.title);setContent(document.content);setSaveState("saved")}});
+  createEffect(()=>{const document=selected();if(document&&document.id!==loadedId)loadDocument(document)});
   onCleanup(()=>{if(timer)window.clearTimeout(timer);if(pending)void flush()});
   const saveMessage=createMemo(()=>saveState()==="saving"?"Saving…":saveState()==="failed"?"Save failed — changes are still here":"");
   return <div class="documents-view">
