@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TaskDetailsDrawer } from "./App";
 import type { Task } from "./types";
@@ -36,7 +36,7 @@ describe("task details drawer", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("edits and saves task details without closing the drawer", async () => {
+  it("automatically saves edited task details without action buttons", async () => {
     const task: Task = {
       id: "task-1",
       projectId: "project-1",
@@ -56,18 +56,18 @@ describe("task details drawer", () => {
 
     render(() => <TaskDetailsDrawer task={task} close={vi.fn()} save={save} />);
     await fireEvent.input(screen.getByLabelText("Task title"), {target: {value: "Publish launch brief"}});
-    await fireEvent.change(screen.getByLabelText("Status"), {target: {value: "progress"}});
-    await fireEvent.change(screen.getByLabelText("Priority"), {target: {value: "high"}});
+    await fireEvent.input(screen.getByLabelText("Status"), {target: {value: "progress"}});
+    await fireEvent.input(screen.getByLabelText("Priority"), {target: {value: "high"}});
     await fireEvent.input(screen.getByLabelText("Tags"), {target: {value: "launch, writing"}});
-    await fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
 
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({
-      title: "Publish launch brief",
-      status: "progress",
-      priority: "high",
-      tags: ["launch", "writing"],
-    }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Publish launch brief",
+        status: "progress",
+        priority: "high",
+        tags: ["launch", "writing"],
+      })), {timeout: 1500});
     expect(screen.queryByRole("button", {name: "Save changes"})).toBeNull();
-    expect(screen.getByRole("button", {name: "Edit"})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Cancel"})).toBeNull();
+    expect(screen.getByText("Saved")).toBeTruthy();
   });
 });

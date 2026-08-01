@@ -209,45 +209,34 @@ function Calendar(props:{tasks:Task[];onTask:(task:Task)=>void}){const [anchor,s
 function TimeView(props:{tasks:Task[];state:AppState;now:number;mutate:(a:()=>Promise<unknown>)=>Promise<void>;onTask:(task:Task)=>void}){const active=()=>props.state.timeEntries.find(e=>!e.stoppedAt),activeTask=()=>props.tasks.find(t=>t.id===active()?.taskId);return <div class="time-view"><div class="timer-hero"><div><span>{active()?"TRACKING NOW":"FOCUS TIMER"}</span><h2>{activeTask()?.title??"Ready when you are"}</h2><p>{activeTask()?.assignee??"Choose a project task to begin tracking time."}</p></div><strong>{active()?secondsLabel(taskSeconds(active()!.taskId,[active()!],props.now)):"0:00"}</strong><Show when={active()}><button class="stop" onClick={()=>void props.mutate(()=>api.stopTimer())}>■ Stop timer</button></Show></div><section class="panel time-list"><div class="panel-title"><div><span>PROJECT TASKS</span><h2>Time by task</h2></div><strong>{secondsLabel(props.tasks.reduce((s,t)=>s+taskSeconds(t.id,props.state.timeEntries,props.now),0))}</strong></div><For each={props.tasks}>{t=><div class="time-row task-detail-trigger" onClick={()=>props.onTask(t)}><button disabled={!!active()} onClick={event=>{event.stopPropagation();void props.mutate(()=>api.startTimer(t.id))}}>▶</button><div><strong>{t.title}</strong><span>{t.assignee||"Unassigned"} · estimate {minutesLabel(t.estimateMinutes)}</span></div><div class="time-progress"><i style={{width:`${Math.min(100,taskSeconds(t.id,props.state.timeEntries,props.now)/(Math.max(1,t.estimateMinutes)*60)*100)}%`}}/></div><b>{secondsLabel(taskSeconds(t.id,props.state.timeEntries,props.now))}</b></div>}</For></section></div>}
 
 export function TaskDetailsDrawer(props:{task:Task;close:()=>void;save:(input:Partial<Task>)=>Promise<Task>}){
-  const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:undefined;
-  const [editing,setEditing]=createSignal(true),[saving,setSaving]=createSignal(false),[error,setError]=createSignal("");
-  let closeButton!:HTMLButtonElement,form!:HTMLFormElement;
-  const scheduleDate=(value:string)=>value?new Date(`${value}T00:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}):"Not set";
-  const keydown=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();if(editing()){setEditing(false);setError("")}else props.close()}};
-  const submit=async(event:SubmitEvent)=>{event.preventDefault();const data=new FormData(form),title=String(data.get("title")).trim();if(!title)return;setSaving(true);setError("");try{await props.save({title,description:String(data.get("description")).trim(),status:String(data.get("status")) as TaskStatus,priority:String(data.get("priority")),assignee:String(data.get("assignee")).trim(),estimateMinutes:Number(data.get("estimateMinutes")),startDate:String(data.get("startDate")),dueDate:String(data.get("dueDate")),tags:String(data.get("tags")).split(",").map(tag=>tag.trim()).filter(Boolean)});setEditing(false)}catch(cause){setError(cause instanceof Error?cause.message:"Unable to save task")}finally{setSaving(false)}};
+  const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:undefined,initialTask=props.task;
+  const [saveState,setSaveState]=createSignal<"saved"|"unsaved"|"saving"|"failed">("saved"),[error,setError]=createSignal("");
+  let closeButton!:HTMLButtonElement,form!:HTMLFormElement,timer:number|undefined,pending:{input:Partial<Task>;revision:number}|undefined,revision=0,saveQueue=Promise.resolve();
+  const formValue=()=>{const data=new FormData(form);return {title:String(data.get("title")).trim(),description:String(data.get("description")).trim(),status:String(data.get("status")) as TaskStatus,priority:String(data.get("priority")),assignee:String(data.get("assignee")).trim(),estimateMinutes:Number(data.get("estimateMinutes")),startDate:String(data.get("startDate")),dueDate:String(data.get("dueDate")),tags:String(data.get("tags")).split(",").map(tag=>tag.trim()).filter(Boolean)} satisfies Partial<Task>};
+  const flush=()=>{if(timer)window.clearTimeout(timer);timer=undefined;const snapshot=pending;if(!snapshot)return saveQueue;pending=undefined;saveQueue=saveQueue.catch(()=>{}).then(async()=>{setSaveState("saving");try{await props.save(snapshot.input);if(snapshot.revision===revision){setSaveState("saved");setError("")}}catch(cause){if(snapshot.revision===revision){setSaveState("failed");setError(cause instanceof Error?cause.message:"Unable to save task")}}});return saveQueue};
+  const queueSave=()=>{const input=formValue();if(!input.title){if(timer)window.clearTimeout(timer);pending=undefined;setSaveState("failed");setError("Task title is required.");return}revision++;pending={input,revision};setSaveState("unsaved");setError("");if(timer)window.clearTimeout(timer);timer=window.setTimeout(()=>void flush(),650)};
+  const keydown=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();props.close()}};
   onMount(()=>{document.addEventListener("keydown",keydown);requestAnimationFrame(()=>closeButton.focus())});
-  onCleanup(()=>{document.removeEventListener("keydown",keydown);if(previousFocus?.isConnected)requestAnimationFrame(()=>previousFocus.focus())});
+  onCleanup(()=>{document.removeEventListener("keydown",keydown);if(timer)window.clearTimeout(timer);if(pending)void flush();if(previousFocus?.isConnected)requestAnimationFrame(()=>previousFocus.focus())});
+  const saveLabel=createMemo(()=>saveState()==="failed"?"Save failed":saveState()==="saved"?"Saved":"Saving…");
   return <div class="task-detail-layer" onMouseDown={event=>{if(event.target===event.currentTarget)props.close()}}><aside class="task-detail-drawer" role="dialog" aria-modal="true" aria-label={`Task details: ${props.task.title}`}>
-    <header><div><span>{editing()?"EDIT TASK":"TASK DETAILS"}</span><h2>{props.task.title}</h2></div><div class="task-detail-header-actions"><Show when={!editing()}><button class="task-detail-edit" onClick={()=>{setError("");setEditing(true)}}>Edit</button></Show><button ref={closeButton} class="task-detail-close" aria-label="Close task details" onClick={props.close}>×</button></div></header>
+    <header><div><span>EDIT TASK</span><h2>{props.task.title}</h2></div><div class="task-detail-header-actions"><span classList={{"task-detail-save-status":true,failed:saveState()==="failed"}} aria-live="polite">{saveLabel()}</span><button ref={closeButton} class="task-detail-close" aria-label="Close task details" onClick={props.close}>×</button></div></header>
     <div class="task-detail-body">
-      <Show when={editing()} fallback={<>
-        <div class="task-detail-badges"><span class={`status ${props.task.status}`}>{statusLabel(props.task.status)}</span><span class={`priority ${props.task.priority}`}>{props.task.priority}</span></div>
-        <section><span>DESCRIPTION</span><p classList={{empty:!props.task.description}}>{props.task.description||"No description provided."}</p></section>
-        <dl class="task-detail-grid">
-          <div><dt>Assignee</dt><dd>{props.task.assignee||"Unassigned"}</dd></div>
-          <div><dt>Estimate</dt><dd>{props.task.estimateMinutes?minutesLabel(props.task.estimateMinutes):"Not estimated"}</dd></div>
-          <div><dt>Start date</dt><dd>{scheduleDate(props.task.startDate)}</dd></div>
-          <div><dt>Due date</dt><dd>{scheduleDate(props.task.dueDate)}</dd></div>
-        </dl>
-        <section><span>TAGS</span><div class="task-detail-tags"><Show when={props.task.tags.length} fallback={<em>No tags</em>}><For each={props.task.tags}>{tag=><span>{tag}</span>}</For></Show></div></section>
+      <form ref={form} class="task-detail-form" onSubmit={event=>event.preventDefault()} onInput={queueSave}>
+        <Show when={error()}><div class="task-detail-form-error" role="alert">{error()}</div></Show>
+        <label>Task title<input name="title" required maxlength={200} value={initialTask.title}/></label>
+        <label>Description<textarea name="description" rows="5">{initialTask.description}</textarea></label>
+        <div class="task-detail-form-grid">
+          <label>Status<select name="status" value={initialTask.status}><For each={columns}>{column=><option value={column.id}>{column.label}</option>}</For></select></label>
+          <label>Priority<select name="priority" value={initialTask.priority}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+          <label>Assignee<input name="assignee" value={initialTask.assignee}/></label>
+          <label>Estimate (minutes)<input name="estimateMinutes" type="number" min="0" value={initialTask.estimateMinutes}/></label>
+          <label>Start date<input name="startDate" type="date" value={initialTask.startDate}/></label>
+          <label>Due date<input name="dueDate" type="date" value={initialTask.dueDate}/></label>
+        </div>
+        <label>Tags<input name="tags" value={initialTask.tags.join(", ")} placeholder="design, launch"/></label>
         <div class="task-detail-audit"><span>Created <time datetime={props.task.createdAt}>{documentDate(props.task.createdAt)}</time></span><span>Last updated <time datetime={props.task.updatedAt}>{documentDate(props.task.updatedAt)}</time></span></div>
-      </>}>
-        <form ref={form} class="task-detail-form" onSubmit={submit}>
-          <Show when={error()}><div class="task-detail-form-error" role="alert">{error()}</div></Show>
-          <label>Task title<input name="title" required maxlength={200} value={props.task.title} disabled={saving()}/></label>
-          <label>Description<textarea name="description" rows="5" disabled={saving()}>{props.task.description}</textarea></label>
-          <div class="task-detail-form-grid">
-            <label>Status<select name="status" value={props.task.status} disabled={saving()}><For each={columns}>{column=><option value={column.id}>{column.label}</option>}</For></select></label>
-            <label>Priority<select name="priority" value={props.task.priority} disabled={saving()}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
-            <label>Assignee<input name="assignee" value={props.task.assignee} disabled={saving()}/></label>
-            <label>Estimate (minutes)<input name="estimateMinutes" type="number" min="0" value={props.task.estimateMinutes} disabled={saving()}/></label>
-            <label>Start date<input name="startDate" type="date" value={props.task.startDate} disabled={saving()}/></label>
-            <label>Due date<input name="dueDate" type="date" value={props.task.dueDate} disabled={saving()}/></label>
-          </div>
-          <label>Tags<input name="tags" value={props.task.tags.join(", ")} placeholder="design, launch" disabled={saving()}/></label>
-          <footer><button type="button" class="task-detail-cancel" disabled={saving()} onClick={()=>{setEditing(false);setError("")}}>Cancel</button><button type="submit" class="task-detail-save" disabled={saving()}>{saving()?"Saving…":"Save changes"}</button></footer>
-        </form>
-      </Show>
+      </form>
     </div>
   </aside></div>
 }

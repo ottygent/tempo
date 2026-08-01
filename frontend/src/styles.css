@@ -2024,13 +2024,6 @@ a:hover { text-decoration: underline; }
   font-weight: 650;
 }
 
-.task-detail-edit {
-  padding: 0 13px;
-  border: 1px solid var(--edge);
-  background: var(--paper);
-  color: var(--ink-secondary);
-}
-
 .task-detail-close {
   flex: 0 0 32px;
   width: 32px;
@@ -2042,6 +2035,15 @@ a:hover { text-decoration: underline; }
 }
 
 .task-detail-header-actions button:hover { color: var(--ink); background: var(--violet-bg); }
+
+.task-detail-save-status {
+  color: var(--mint);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.task-detail-save-status.failed { color: var(--danger); }
 
 .task-detail-body {
   min-height: 0;
@@ -2157,23 +2159,6 @@ a:hover { text-decoration: underline; }
   color: var(--danger);
   font-size: 11px;
 }
-
-.task-detail-form footer {
-  position: sticky;
-  bottom: -22px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin: 4px -22px -22px;
-  padding: 14px 22px;
-  border-top: 1px solid var(--edge);
-  background: var(--paper);
-}
-
-.task-detail-form footer button { padding: 9px 14px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-.task-detail-cancel { border: 1px solid var(--edge); background: var(--paper); color: var(--ink-secondary); }
-.task-detail-save { background: var(--violet); color: #fff; }
-.task-detail-form footer button:disabled { cursor: wait; opacity: .6; }
 
 /* --------------------------------------------------------------------------
    16. Modals
