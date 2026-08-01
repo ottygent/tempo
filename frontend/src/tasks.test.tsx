@@ -27,10 +27,10 @@ describe("task details drawer", () => {
     render(() => <TaskDetailsDrawer task={task} close={close} save={vi.fn()} />);
 
     expect(screen.getByRole("dialog", {name: `Task details: ${task.title}`})).toBeTruthy();
-    expect(screen.getByText(task.description)).toBeTruthy();
-    expect(screen.getByText("Maya")).toBeTruthy();
-    expect(screen.getByText("1h 30m")).toBeTruthy();
-    expect(screen.getByText("launch")).toBeTruthy();
+    expect(screen.getByDisplayValue(task.description)).toBeTruthy();
+    expect(screen.getByDisplayValue("Maya")).toBeTruthy();
+    expect(screen.getByDisplayValue("90")).toBeTruthy();
+    expect(screen.getByDisplayValue("launch, brief")).toBeTruthy();
 
     await fireEvent.click(screen.getByRole("button", {name: "Close task details"}));
     expect(close).toHaveBeenCalledOnce();
@@ -55,7 +55,6 @@ describe("task details drawer", () => {
     const save = vi.fn(async(input:Partial<Task>)=>({...task,...input,updatedAt:"2026-08-01T10:00:00Z"}));
 
     render(() => <TaskDetailsDrawer task={task} close={vi.fn()} save={save} />);
-    await fireEvent.click(screen.getByRole("button", {name: "Edit"}));
     await fireEvent.input(screen.getByLabelText("Task title"), {target: {value: "Publish launch brief"}});
     await fireEvent.change(screen.getByLabelText("Status"), {target: {value: "progress"}});
     await fireEvent.change(screen.getByLabelText("Priority"), {target: {value: "high"}});

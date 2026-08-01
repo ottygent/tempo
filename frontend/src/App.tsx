@@ -210,7 +210,7 @@ function TimeView(props:{tasks:Task[];state:AppState;now:number;mutate:(a:()=>Pr
 
 export function TaskDetailsDrawer(props:{task:Task;close:()=>void;save:(input:Partial<Task>)=>Promise<Task>}){
   const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:undefined;
-  const [editing,setEditing]=createSignal(false),[saving,setSaving]=createSignal(false),[error,setError]=createSignal("");
+  const [editing,setEditing]=createSignal(true),[saving,setSaving]=createSignal(false),[error,setError]=createSignal("");
   let closeButton!:HTMLButtonElement,form!:HTMLFormElement;
   const scheduleDate=(value:string)=>value?new Date(`${value}T00:00:00`).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}):"Not set";
   const keydown=(event:KeyboardEvent)=>{if(event.key==="Escape"){event.preventDefault();if(editing()){setEditing(false);setError("")}else props.close()}};
