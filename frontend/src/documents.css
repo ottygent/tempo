@@ -278,7 +278,7 @@
   background: var(--paper);
 }
 
-.document-editor-header span {
+.document-editor-header > span {
   color: var(--subtle);
   font-size: 8px;
   font-weight: 750;
@@ -286,6 +286,7 @@
 }
 
 .document-editor-title {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -299,8 +300,10 @@
 .document-editor-title:hover { color: var(--ink-secondary); }
 
 .document-title-input {
+  flex: 1 1 120px;
   min-width: 120px;
-  width: min(420px, calc(100% - 44px));
+  width: min(420px, 100%);
+  max-width: 420px;
   height: 26px;
   padding: 3px 7px;
   border: 1px solid var(--violet);
@@ -310,6 +313,35 @@
   font-size: 11px;
   font-weight: 600;
   outline: none;
+}
+
+.document-header-dates {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.document-header-date {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.document-header-date b {
+  color: var(--subtle);
+  font-size: 7px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.document-header-date time {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
 }
 
 /* Save status message */
@@ -547,6 +579,10 @@
   .document-library > header h2 { margin: 0; font-size: 17px; }
 
   .document-workspace { min-height: 580px; }
+
+  .document-editor-header { flex-wrap: wrap; }
+
+  .document-header-dates { width: 100%; justify-content: flex-end; }
 
   .document-save-message { font-size: 10px; }
 

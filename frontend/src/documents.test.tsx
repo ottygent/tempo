@@ -57,6 +57,8 @@ describe("document editor", () => {
     expect(within(library as HTMLElement).getByText(projectDocument.title)).toBeTruthy();
     expect(within(library as HTMLElement).queryByText(projectDocument.content)).toBeNull();
     expect(document.querySelector(".document-editor-header")?.classList.contains("document-editor-header")).toBe(true);
+    expect(screen.getByText("Created")).toBeTruthy();
+    expect(screen.getByText("Last updated")).toBeTruthy();
   });
 
   it("renames a document inline after double-clicking its editor filename", async () => {
