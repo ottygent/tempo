@@ -11,6 +11,8 @@ const columns:{id:TaskStatus;label:string}[]=[{id:"backlog",label:"Backlog"},{id
 const icons:Record<View,string>={overview:"⌂",board:"▦",docs:"▤",timeline:"↔",calendar:"□",time:"◷"};
 const characterCount=(value:string)=>[...value].length;
 
+const TempoLogo=(props:{size?:number})=><svg class="brand-mark" width={props.size??34} height={props.size??34} viewBox="0 0 34 34" role="img" aria-label="Tempo logo"><rect x="1" y="1" width="32" height="32" rx="10" fill="var(--md-primary)"/><path d="M7 21h4.5l3.2-9.5 4.6 13 3.2-8H27" fill="none" stroke="var(--md-on-primary)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>;
+
 export default function App(){
   const syncThemeMeta = (value: "dark" | "light") => {
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
@@ -53,10 +55,10 @@ export default function App(){
     <Show when={mobileNav()}><button class="scrim" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/></Show>
     <aside classList={{sidebar:true,open:mobileNav(),collapsed:sidebarCollapsed()}}>
       <button class="close-nav" aria-label="Close navigation" onClick={()=>setMobileNav(false)}>×</button>
+      <div class="sidebar-brand"><TempoLogo/><div class="brand-copy"><strong>tempo</strong><span>work in motion</span></div></div>
       <div class="workspace-menu" ref={workspaceMenu}>
         <div class="workspace-menu-header">
           <button class="workspace-switch" aria-label="Select workspace" aria-haspopup="menu" aria-expanded={workspaceMenuOpen()} onClick={()=>setWorkspaceMenuOpen(open=>!open)}><span class="workspace-avatar" style={{background:workspace()?.color??defaultWorkspaceColor}}>{workspace()?.name?.[0]??"D"}</span><span class="workspace-name">{workspace()?.name??"Default workspace"}</span><b classList={{open:workspaceMenuOpen()}}>⌄</b></button>
-          <button class="sidebar-menu-trigger" aria-label={sidebarCollapsed()?"Expand navigation":"Collapse navigation"} aria-expanded={!sidebarCollapsed()} onClick={()=>{setWorkspaceMenuOpen(false);setSidebarCollapsed(collapsed=>!collapsed)}}>☰</button>
         </div>
         <Show when={workspaceMenuOpen()}><div class="workspace-options" role="menu" aria-label="Workspace options"><For each={state().workspaces}>{w=><button role="menuitemradio" aria-checked={workspace()?.id===w.id} classList={{selected:workspace()?.id===w.id}} onClick={()=>{chooseWorkspace(w.id);setWorkspaceMenuOpen(false)}}><span class="workspace-option-avatar" style={{background:w.color}}>{w.name[0]}</span><span>{w.name}</span><b>✓</b></button>}</For><div class="workspace-menu-divider"/><button class="workspace-add" role="menuitem" onClick={()=>{setWorkspaceMenuOpen(false);setWorkspaceOpen(true)}}><span>+</span>Add new workspace</button></div></Show>
       </div>
@@ -88,6 +90,7 @@ export default function App(){
     <main classList={{main:true,"sidebar-collapsed":sidebarCollapsed()}}>
       <header class="topbar">
         <button class="menu" aria-label="Open navigation" onClick={()=>setMobileNav(true)}>☰</button>
+        <button class="sidebar-menu-trigger" aria-label={sidebarCollapsed()?"Expand navigation":"Collapse navigation"} aria-expanded={!sidebarCollapsed()} onClick={()=>{setWorkspaceMenuOpen(false);setSidebarCollapsed(collapsed=>!collapsed)}}>☰</button>
         <strong class="project-title">{project()?.name??"Projects"}</strong>
         <div class="top-actions">
           <button class="icon-button theme-toggle" type="button" aria-label={`Switch to ${theme()==="dark"?"light":"dark"} theme`} title={`Switch to ${theme()==="dark"?"light":"dark"} theme`} onClick={()=>setTheme(t=>t==="dark"?"light":"dark")}>
@@ -132,7 +135,7 @@ export default function App(){
 
 function Login(props:{defaultUsername:string;onLogin:(username:string,password:string)=>Promise<void>}){
   const [error,setError]=createSignal(""),[submitting,setSubmitting]=createSignal(false);let form!:HTMLFormElement;
-  return <main class="login-page"><section class="login-card"><div class="login-brand"><div class="brand-mark">T</div><div><strong>tempo</strong><span>work in motion</span></div></div><div class="login-copy"><span>WELCOME BACK</span><h1>Sign in to your workspace</h1><p>Your projects, plans, and tracked time are protected.</p></div><Show when={error()}><div class="login-error" role="alert">{error()}</div></Show><form ref={form} onSubmit={async e=>{e.preventDefault();setSubmitting(true);setError("");const data=new FormData(form);try{await props.onLogin(String(data.get("username")),String(data.get("password")))}catch(e){setError(e instanceof Error?e.message:"Sign in failed")}finally{setSubmitting(false)}}}><label>Username<input name="username" autocomplete="username" required value={props.defaultUsername}/></label><label>Password<input name="password" type="password" autocomplete="current-password" required autofocus/></label><button class="primary login-submit" disabled={submitting()}>{submitting()?"Signing in…":"Sign in"}</button></form><p class="login-note">HttpOnly session · SameSite Strict · 8-hour expiry</p></section></main>
+  return <main class="login-page"><section class="login-card"><div class="login-brand"><TempoLogo size={38}/><div><strong>tempo</strong><span>work in motion</span></div></div><div class="login-copy"><span>WELCOME BACK</span><h1>Sign in to your workspace</h1><p>Your projects, plans, and tracked time are protected.</p></div><Show when={error()}><div class="login-error" role="alert">{error()}</div></Show><form ref={form} onSubmit={async e=>{e.preventDefault();setSubmitting(true);setError("");const data=new FormData(form);try{await props.onLogin(String(data.get("username")),String(data.get("password")))}catch(e){setError(e instanceof Error?e.message:"Sign in failed")}finally{setSubmitting(false)}}}><label>Username<input name="username" autocomplete="username" required value={props.defaultUsername}/></label><label>Password<input name="password" type="password" autocomplete="current-password" required autofocus/></label><button class="primary login-submit" disabled={submitting()}>{submitting()?"Signing in…":"Sign in"}</button></form><p class="login-note">HttpOnly session · SameSite Strict · 8-hour expiry</p></section></main>
 }
 
 function Overview(props:{project:Project;tasks:Task[];tracked:number;setView:(v:View)=>void;onTask:(task:Task)=>void}){
