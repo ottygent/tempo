@@ -15,7 +15,7 @@ export default function App(){
   const syncThemeMeta = (value: "dark" | "light") => {
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (!meta) return;
-    meta.content = value === "dark" ? "#1c1b1f" : "#fffbfe";
+    meta.content = value === "dark" ? "#141218" : "#fdf7ff";
   };
   const [theme,setTheme]=createSignal<"dark"|"light">((localStorage.getItem("tempo_theme") as "dark"|"light")||"dark");
   const [state,setState]=createSignal<AppState>(empty),[selectedWorkspace,setSelectedWorkspace]=createSignal(""),[selectedProject,setSelectedProject]=createSignal(""),[view,setView]=createSignal<View>("overview"),[documentCreateRequest,setDocumentCreateRequest]=createSignal(0);

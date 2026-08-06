@@ -60,9 +60,9 @@
 /* New document button */
 .document-new {
   border: 0;
-  background: var(--violet);
-  color: #fff;
-  border-radius: var(--r-md);
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  border-radius: var(--r-full);
   height: 32px;
   padding: 0 12px;
   display: flex;
@@ -76,13 +76,13 @@
 }
 
 .document-new:hover {
-  background: var(--violet-dark);
+  filter: brightness(1.08);
   box-shadow: 0 4px 12px var(--violet-alpha);
   transform: translateY(-1px);
 }
 
 .document-new span {
-  color: #fff !important;
+  color: inherit !important;
   letter-spacing: 0 !important;
   text-transform: none !important;
   font-size: 12px !important;
@@ -307,7 +307,7 @@
   height: 26px;
   padding: 3px 7px;
   border: 1px solid var(--violet);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--ink);
   font-size: 11px;
@@ -469,7 +469,7 @@
 
 .markdown-body code:not(pre code) {
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   background: var(--violet-bg);
   color: var(--violet-dark);
   font-size: .88em;
